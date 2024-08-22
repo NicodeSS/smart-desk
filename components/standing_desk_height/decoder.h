@@ -7,25 +7,6 @@
 #include <cstdlib>
 #include <regex>
 
-typedef enum
-{
-    SYNC,
-    SCREEN1,
-    SCREEN2,
-    SCREEN3,
-    CHECKSUM,
-} data_state_t;
-
-typedef enum
-{
-    DISPLAYING,
-    SETTING_MEM,
-    SETTING_ALARM,
-    LOCKING,
-    WAITING_RESET,
-    ALARMING_ERROR,
-} state_t;
-
 namespace esphome
 {
     namespace standing_desk_height
@@ -33,6 +14,24 @@ namespace esphome
         class Decoder
         {
         protected:
+            typedef enum
+            {
+                SYNC,
+                SCREEN1,
+                SCREEN2,
+                SCREEN3,
+                CHECKSUM,
+            } data_state_t;
+
+            typedef enum
+            {
+                DISPLAYING,
+                SETTING_MEM,
+                SETTING_ALARM,
+                LOCKING,
+                WAITING_RESET,
+                ALARMING_ERROR,
+            } state_t;
             data_state_t data_state = SYNC;
             uint8_t buf[3];
             // 日.日.日.

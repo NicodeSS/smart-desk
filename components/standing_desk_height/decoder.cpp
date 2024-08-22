@@ -103,29 +103,22 @@ namespace esphome
             return result;
         }
 
-        state_t Decoder::get_state()
+        Decoder::state_t Decoder::get_state()
         {
             state_t current_state;
-            switch (true)
-            {
-            case display == "5 -   ":
-            case display == "5     ":
+            std::regex pattern("^[0-9\\.\\s]{4}h\\s$");
+            if (display == "5 -   " || display == "5     ")
                 return SETTING_MEM;
-            case display == "L o c ":
+            else if (display == "L o c ")
                 return LOCKING;
-            case std::regex_match(display, regex_pattern("^[0-9\\.\\s]{4}h\\s$")):
+            else if (std::regex_match(display, pattern))
                 return SETTING_ALARM;
-            case display == "A 5 t ":
+            else if (display == "A 5 t ")
                 return WAITING_RESET;
-            case display == "E 0 4 ":
-            case display == "E 0 5 ":
-            case display == "H 0 t ":
-            case display == "E 1 1 ":
-            case display == "E 2 1 ":
+            else if (display == "E 0 4 " || display == "E 0 5 " || display == "H 0 t " || display == "E 1 1 " || display == "E 2 1 ")
                 return ALARMING_ERROR;
-            default:
+            else
                 return DISPLAYING;
-            }
         }
 
         float Decoder::get_height()
@@ -163,14 +156,7 @@ namespace esphome
                 return -1.0f; // 空字符串或仅包含小数点的字符串，不合法
             }
 
-            try
-            {
-                return std::stof(result); // 将合法字符串转换为浮点数
-            }
-            catch (...)
-            {
-                return -1.0f; // 转换失败，不合法
-            }
+            return std::stof(result);
         }
     }
 }

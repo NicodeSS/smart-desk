@@ -3,10 +3,11 @@ namespace esphome
 {
     namespace standing_desk_height
     {
-        static const char *const TAG = "standing_desk_height";
+        static std::string TAG = "standing_desk_height";
 
         void StandingDeskHeightSensor::setup()
         {
+            ESP_LOGVV(TAG, "Sensor Setup");
             if (this->decoder == nullptr)
             {
                 this->decoder = new Decoder();
@@ -24,8 +25,9 @@ namespace esphome
 
                 if (this->decoder != nullptr && this->decoder->put(byte))
                 {
-                    state_t state = this->decoder->get_state();
-                    float height = this->decoder->decode();
+                    std::string content = this->decoder->decode();
+                    ESP_LOGVV(TAG, "Got desk display: %s", content);
+                    float height = this->decoder->get_height();
                     ESP_LOGVV(TAG, "Got desk height: %f", height);
                     this->last_read = height;
                 }
@@ -46,3 +48,4 @@ namespace esphome
             return this->last_read;
         }
     }
+}
