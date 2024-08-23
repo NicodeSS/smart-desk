@@ -75,7 +75,7 @@ namespace esphome
         {
             std::string result = "";
 
-            for (size_t i = 0; i < 3; i++)
+            for (size_t i = 1; i < 3; i++)
             {
                 uint8_t segment = buf[i];
 
