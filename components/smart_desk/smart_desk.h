@@ -50,7 +50,7 @@ namespace esphome
             uart::UARTComponent *uart_control;
             uart::UARTComponent *uart_handset;
 
-            bool initial_command_sent = false;
+            bool handset_online = false;
         };
 
     }

@@ -25,27 +25,18 @@ namespace esphome
             }
         }
 
-        void SmartDesk::write_initial_command()
-        {
-            const uint8_t initial_command_control[5] = {0xA5, 0x00, 0x00, 0xFF, 0xFF};
-            uart_control->write_array(initial_command_control, 5);
-            const uint8_t initial_command_handset[5] = {0x5A, 0x3F, 0x3F, 0x3F, 0xBD};
-
-            initial_command_sent = true;
-            ESP_LOGW(TAG, "Initial command sent");
-        }
-
         void SmartDesk::loop()
         {
-            if (!initial_command_sent)
-            {
-                write_initial_command();
-            }
             uint8_t uart_control_c, uart_handset_c;
             // ESP_LOGD(TAG, "Available Bytes: Handset: %d, Controller: %d", uart_handset->available(), uart_control->available());
 
             if (uart_handset->available() > 0)
             {
+                if (handset_online == false)
+                {
+                    handset_online = true;
+                    ESP_LOGW(TAG, "Handset becomes online");
+                }
                 while (uart_handset->available() > 0)
                 {
                     uart_handset->read_byte(&uart_handset_c);
@@ -70,7 +61,7 @@ namespace esphome
                     }
                 }
             }
-            else
+            else if (!handset_online)
             {
                 if (!tx_controller->is_empty())
                 {
