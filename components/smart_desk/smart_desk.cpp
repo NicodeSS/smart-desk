@@ -44,27 +44,42 @@ namespace esphome
             uint8_t uart_control_c, uart_handset_c;
             // ESP_LOGD(TAG, "Available Bytes: Handset: %d, Controller: %d", uart_handset->available(), uart_control->available());
 
-            while (uart_handset->available() > 0)
+            if (uart_handset->available() > 0)
             {
-                uart_handset->read_byte(&uart_handset_c);
-                // ESP_LOGW(TAG, "Handset --> ControlBox: %X", uart_handset_c);
-
-                if (tx_verifier != nullptr && tx_verifier->put(uart_handset_c))
+                while (uart_handset->available() > 0)
                 {
-                    if (!tx_controller->is_empty())
-                    {
-                        const TxCommand *tx_c = tx_controller->pop();
-                        // ESP_LOGD(TAG, "Replaced command: %X %X %X %X %X", tx_c->command[0], tx_c->command[1], tx_c->command[2], tx_c->command[3], tx_c->command[4]);
-                        uart_control->write_array(tx_c->command, 5);
-                    }
-                    else
-                    {
-                        const uint8_t *buf = tx_verifier->get_buffer();
-                        // ESP_LOGD(TAG, "Handset --> ControlBox : %X %X %X %X %X", buf[0], buf[1], buf[2], buf[3], buf[4]);
-                        uart_control->write_array(buf, 5);
-                    }
+                    uart_handset->read_byte(&uart_handset_c);
+                    // ESP_LOGW(TAG, "Handset --> ControlBox: %X", uart_handset_c);
 
-                    break;
+                    if (tx_verifier != nullptr && tx_verifier->put(uart_handset_c))
+                    {
+                        if (!tx_controller->is_empty())
+                        {
+                            const TxCommand *tx_c = tx_controller->pop();
+                            // ESP_LOGD(TAG, "Replaced command: %X %X %X %X %X", tx_c->command[0], tx_c->command[1], tx_c->command[2], tx_c->command[3], tx_c->command[4]);
+                            uart_control->write_array(tx_c->command, 5);
+                        }
+                        else
+                        {
+                            const uint8_t *buf = tx_verifier->get_buffer();
+                            // ESP_LOGD(TAG, "Handset --> ControlBox : %X %X %X %X %X", buf[0], buf[1], buf[2], buf[3], buf[4]);
+                            uart_control->write_array(buf, 5);
+                        }
+
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                if (!tx_controller->is_empty())
+                {
+                    const TxCommand *tx_c = tx_controller->pop();
+                    uart_control->write_array(tx_c->command, 5);
+                }
+                else
+                {
+                    uart_control->write_array(command_handset_normal, 5);
                 }
             }
 

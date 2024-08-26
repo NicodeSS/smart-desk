@@ -22,6 +22,8 @@ namespace esphome
             DESK_DOWN = 0x40,
             DESK_AWAKE = 0x80,
         } desk_button;
+
+        const uint8_t command_handset_normal[5] = {0xA5, 0x00, 0x00, 0xFF, 0xFF};
         class SmartDesk : public Component
         {
         public:
