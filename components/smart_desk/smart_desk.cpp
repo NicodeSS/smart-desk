@@ -23,6 +23,10 @@ namespace esphome
             {
                 tx_controller = new TxController();
             }
+            if (binary_sensor_handset_online != nullptr)
+            {
+                binary_sensor_handset_online->publish_initial_state(false);
+            }
         }
 
         void SmartDesk::loop()
@@ -30,12 +34,23 @@ namespace esphome
             uint8_t uart_control_c, uart_handset_c;
             // ESP_LOGD(TAG, "Available Bytes: Handset: %d, Controller: %d", uart_handset->available(), uart_control->available());
 
+            if (!is_initial_command_sent)
+            {
+                add_command("P", 1);
+                is_initial_command_sent = true;
+            }
+
             if (uart_handset->available() > 0)
             {
-                if (handset_online == false)
+                handset_timeout_count = 0;
+                if (is_handset_online == false)
                 {
-                    handset_online = true;
-                    ESP_LOGW(TAG, "Handset becomes online");
+                    is_handset_online = true;
+                    if (binary_sensor_handset_online != nullptr)
+                    {
+                        binary_sensor_handset_online->publish_state(true);
+                    }
+                    ESP_LOGW(TAG, "Handset goes online");
                 }
                 while (uart_handset->available() > 0)
                 {
@@ -61,7 +76,7 @@ namespace esphome
                     }
                 }
             }
-            else if (!handset_online)
+            else if (!is_handset_online)
             {
                 if (!tx_controller->is_empty())
                 {
@@ -73,6 +88,22 @@ namespace esphome
                     uart_control->write_array(command_handset_normal, 5);
                 }
             }
+            else
+            {
+                if (handset_timeout_count < max_handset_timeout_count)
+                {
+                    handset_timeout_count++;
+                }
+                else if (is_handset_online)
+                {
+                    is_handset_online = false;
+                    ESP_LOGW(TAG, "Handset goes offline.");
+                    if (binary_sensor_handset_online != nullptr)
+                    {
+                        binary_sensor_handset_online->publish_state(false);
+                    }
+                }
+            }
 
             while (uart_control->available() > 0)
             {
@@ -82,16 +113,31 @@ namespace esphome
                 {
                     const uint8_t *buf = rx_decoder->get_buffer();
                     // ESP_LOGD(TAG, "Controlbox --> Headset: %X %X %X %X %X", buf[0], buf[1], buf[2], buf[3], buf[4]);
-                    const char *display = rx_decoder->decode();
                     uart_handset->write_array(buf, 5);
+                    rx_decoder->update_state();
+                    if (!rx_decoder->is_updated())
+                    {
+                        if (sensor_height != nullptr)
+                            sensor_height->publish_state(rx_decoder->get_desk_height());
+                        if (text_sensor_status != nullptr)
+                            text_sensor_status->publish_state(rx_decoder->get_desk_state());
+                        if (text_sensor_display != nullptr)
+                            text_sensor_display->publish_state(rx_decoder->get_desk_display());
+                        rx_decoder->set_updated();
+                    }
                     break;
                 }
             }
         }
 
-        void SmartDesk::dump_config() { ESP_LOGCONFIG(TAG, "smart_desk dump_config"); }
+        void SmartDesk::dump_config()
+        {
+            ESP_LOGCONFIG(TAG, "dump_config");
+            ESP_LOGCONFIG(TAG, "Max handset timeout count: %d", max_handset_timeout_count);
+            ESP_LOGCONFIG(TAG, "Default command repeat: %d", default_tx_command_repeat);
+        }
 
-        bool SmartDesk::add_command(const char *button_chars, size_t len, int repeat)
+        bool SmartDesk::add_command(std::string button_chars, int repeat)
         {
             if (tx_controller->is_full())
             {
@@ -100,9 +146,9 @@ namespace esphome
 
             uint8_t pressed = 0;
 
-            for (int i = 0; i < len; i++)
+            for (auto button_char : button_chars)
             {
-                switch (button_chars[i])
+                switch (button_char)
                 {
                 case '1':
                 {

@@ -41,6 +41,9 @@ namespace esphome
 {
     namespace nicode_smart_desk
     {
+        extern float max_desk_height;
+        extern float min_desk_height;
+        extern const char segment_map[128];
 
         bool RxDecoder::put(uint8_t b)
         {
@@ -85,6 +88,7 @@ namespace esphome
                 if (computed_checksum == b)
                 {
                     flag = true;
+                    update_state();
                 }
                 // else
                 // {
@@ -102,8 +106,9 @@ namespace esphome
             return buf;
         }
 
-        char *RxDecoder::decode()
+        std::string RxDecoder::decode()
         {
+            display = "";
             for (size_t i = 1; i < 4; i++)
             {
                 uint8_t segment = buf[i];
@@ -111,86 +116,120 @@ namespace esphome
                 bool has_dot = segment & 0x80;
                 segment &= 0x7F;
 
-                display_bit[2 * (i - 1)] = esphome::nicode_smart_desk::segment_map[segment];
-                display_bit[2 * (i - 1) + 1] = has_dot ? '.' : ' ';
+                display += esphome::nicode_smart_desk::segment_map[segment];
+                display += has_dot ? '.' : ' ';
 
                 // ESP_LOGW("UART RX DECODER", "Current data: %X, hasDot %d, remove dot: %X", buf[i], hasDot, segment);
-
-                // if (segmentMap.find(segment) != segmentMap.end())
-                // {
-                //     display_bit[(i - 1) * 2] = segmentMap[segment];
-                // }
-                // else
-                // {
-                //     display_bit[(i - 1) * 2] = '?';
-                // }
-                // if (has_dot)
-                // {
-                //     display_bit[(i - 1) * 2 + 1] = '.';
-                // }
-                // else
-                // {
-                //     display_bit[(i - 1) * 2 + 1] = ' ';
-                // }
             }
-            display_bit[7] = '\0';
-            return display_bit;
+            return display;
         }
 
-        RxDecoder::state_t RxDecoder::get_state()
+        void RxDecoder::update_state()
         {
-            state_t current_state;
-            std::regex pattern("^[0-9\\.\\s]{4}h\\s$");
-            if (display == "5 -   " || display == "5     ")
-                return SETTING_MEM;
-            else if (display == "L o c ")
-                return LOCKING;
-            else if (std::regex_match(display, pattern))
-                return SETTING_ALARM;
-            else if (display == "A 5 t ")
-                return WAITING_RESET;
-            else if (display == "E 0 4 " || display == "E 0 5 " || display == "H 0 t " || display == "E 1 1 " || display == "E 2 1 ")
-                return ALARMING_ERROR;
-            else
-                return DISPLAYING;
-        }
-
-        float RxDecoder::get_height()
-        {
-            std::string result = "";
-            bool decimalPointFound = false;
-
-            for (char c : display)
+            if (memcmp(buf, buf_last, 5) == 0)
             {
-                if (std::isdigit(c))
+                // same as last, do nothing;
+                return;
+            }
+
+            decode();
+
+            if (display == "      ")
+            {
+                // hibernating, pass
+                return;
+            }
+            else if (std::regex_match(display, numeric_regex))
+            {
+                state = DISPLAYING_HEIGHT;
+                std::string temp;
+                for (auto ch : display)
                 {
-                    result += c;
-                }
-                else if (c == '.')
-                {
-                    if (decimalPointFound)
+                    if (!std::isspace(ch))
                     {
-                        return -1.0f; // 多个小数点，不合法
+                        temp += ch;
                     }
-                    decimalPointFound = true;
-                    result += c;
                 }
-                else if (c == ' ')
-                {
-                    continue; // 忽略空格
-                }
+                float result = std::stof(temp);
+                if (abs(desk_height - result) < 3.0f || desk_height < min_desk_height || desk_height > max_desk_height)
+                    desk_height = result;
                 else
                 {
-                    return -1.0f; // 非法字符
+                    ESP_LOGD("UART RX DECODER", "New height %.1f has huge gap with old height %.1f, ignoring.", result, desk_height);
                 }
             }
-
-            if (result.empty() || result == "." || result.front() == '.' || result.back() == '.')
+            else if (display == "L o c ")
             {
-                return -1.0f; // 空字符串或仅包含小数点的字符串，不合法
+                state = LOCKING;
             }
+            else if (display == "A 5 t ")
+            {
+                state = RESETTING;
+            }
+            else if (display[0] == 'E' || display == "H 0 t ")
+            {
+                state = ALARMING_ERROR;
+            }
+            else if (display[0] == '5' && (display[2] == ' ' || display[2] == '-'))
+            {
+                state = SETTING_MEM;
+            }
+            else if (std::regex_match(display, setting_alarm_regex))
+            {
+                state = SETTING_ALARM;
+            }
+            else
+            {
+                ESP_LOGW("UART RX DECODER", "Decode failed: %s", display);
+            }
+            memcpy(buf_last, buf, 5);
+            is_data_updated = false;
+        }
 
-            return std::stof(result);
+        float RxDecoder::get_desk_height()
+        {
+            return desk_height;
+        }
+
+        std::string RxDecoder::get_desk_state()
+        {
+            switch (state)
+            {
+            case DISPLAYING_HEIGHT:
+                return "正常";
+            case SETTING_MEM:
+                return "设置记忆中";
+            case SETTING_ALARM:
+                return "设置闹钟中";
+            case LOCKING:
+                return "锁定";
+            case RESETTING:
+                return "复位中";
+            case ALARMING_ERROR:
+                return "报错";
+            }
+            return "未知";
+        }
+
+        std::string RxDecoder::get_desk_display()
+        {
+            std::string result;
+            for (auto ch : display)
+            {
+                if (!std::isspace(ch))
+                {
+                    result += ch;
+                }
+            }
+            return result;
+        }
+        bool RxDecoder::is_updated()
+        {
+            return is_data_updated;
+        }
+        void RxDecoder::set_updated()
+        {
+            is_data_updated = true;
         }
     }
 }
