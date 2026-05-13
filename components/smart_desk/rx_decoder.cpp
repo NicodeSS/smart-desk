@@ -124,6 +124,34 @@ namespace esphome
             return display;
         }
 
+        bool RxDecoder::is_numeric_display_() const
+        {
+            return display.size() == 6 &&
+                   std::isdigit(static_cast<unsigned char>(display[0])) &&
+                   display[1] == ' ' &&
+                   std::isdigit(static_cast<unsigned char>(display[2])) &&
+                   (display[3] == ' ' || display[3] == '.') &&
+                   std::isdigit(static_cast<unsigned char>(display[4])) &&
+                   display[5] == ' ';
+        }
+
+        bool RxDecoder::is_setting_alarm_display_() const
+        {
+            if (display.size() != 6 || display[4] != 'h' || display[5] != ' ')
+            {
+                return false;
+            }
+            for (size_t i = 0; i < 4; i++)
+            {
+                const char ch = display[i];
+                if (!std::isdigit(static_cast<unsigned char>(ch)) && ch != '.' && ch != ' ')
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         void RxDecoder::update_state()
         {
             if (memcmp(buf, buf_last, 5) == 0)
@@ -137,21 +165,23 @@ namespace esphome
             if (display == "      ")
             {
                 // hibernating, pass
+                memcpy(buf_last, buf, 5);
                 return;
             }
-            else if (std::regex_match(display, numeric_regex))
+            else if (is_numeric_display_())
             {
                 state = DISPLAYING_HEIGHT;
                 std::string temp;
                 for (auto ch : display)
                 {
-                    if (!std::isspace(ch))
+                    if (!std::isspace(static_cast<unsigned char>(ch)))
                     {
                         temp += ch;
                     }
                 }
                 float result = std::stof(temp);
-                if (abs(desk_height - result) < 3.0f || desk_height < min_desk_height || desk_height > max_desk_height)
+                if (std::isnan(desk_height) || std::fabs(desk_height - result) < 3.0f ||
+                    desk_height < min_desk_height || desk_height > max_desk_height)
                     desk_height = result;
                 else
                 {
@@ -174,13 +204,13 @@ namespace esphome
             {
                 state = SETTING_MEM;
             }
-            else if (std::regex_match(display, setting_alarm_regex))
+            else if (is_setting_alarm_display_())
             {
                 state = SETTING_ALARM;
             }
             else
             {
-                ESP_LOGW("UART RX DECODER", "Decode failed: %s", display);
+                ESP_LOGW("UART RX DECODER", "Decode failed: %s", display.c_str());
             }
             memcpy(buf_last, buf, 5);
             is_data_updated = false;
@@ -216,7 +246,7 @@ namespace esphome
             std::string result;
             for (auto ch : display)
             {
-                if (!std::isspace(ch))
+                if (!std::isspace(static_cast<unsigned char>(ch)))
                 {
                     result += ch;
                 }

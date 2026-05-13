@@ -6,7 +6,7 @@ namespace esphome
     {
         bool TxController::enqueue(const uint8_t *command, int repeat)
         {
-            if (count == TX_COMMAND_QUEUE_SIZE)
+            if (command == nullptr || repeat <= 0 || count == TX_COMMAND_QUEUE_SIZE)
             {
                 return false;
             }

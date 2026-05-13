@@ -1,14 +1,10 @@
 #pragma once
 
-#include <iostream>
-#include <string>
-#include <sstream>
+#include <cctype>
+#include <cmath>
+#include <cstring>
 #include <stdint.h>
 #include <string>
-#include <unordered_map>
-#include <cctype>
-#include <cstdlib>
-#include <regex>
 #include "esphome/core/log.h"
 namespace esphome
 {
@@ -20,9 +16,6 @@ namespace esphome
         class RxDecoder
         {
         protected:
-            std::regex numeric_regex = std::regex("^[0-9]\\s[0-9](\\s|.)[0-9]\\s");
-            std::regex setting_alarm_regex = std::regex("^[0-9\\.\\s]{4}h\\s");
-
             typedef enum
             {
                 SYNC,
@@ -32,8 +25,8 @@ namespace esphome
                 CHECKSUM,
             } data_state_t;
             data_state_t data_state = SYNC;
-            uint8_t buf[5];
-            uint8_t buf_last[5];
+            uint8_t buf[5]{};
+            uint8_t buf_last[5]{0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
             typedef enum
             {
@@ -53,9 +46,11 @@ namespace esphome
             std::string display;
             bool is_data_updated = false;
 
-            float desk_height;
+            float desk_height = NAN;
 
             std::string decode();
+            bool is_numeric_display_() const;
+            bool is_setting_alarm_display_() const;
 
         public:
             RxDecoder() {}

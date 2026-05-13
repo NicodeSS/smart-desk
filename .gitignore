@@ -1,0 +1,7 @@
+.esphome/
+__pycache__/
+*.py[cod]
+
+.pioenvs/
+.piolibdeps/
+build/

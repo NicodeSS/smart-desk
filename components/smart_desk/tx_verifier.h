@@ -1,9 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <cctype>
-#include <cstdlib>
-#include <regex>
+#include <string>
 #include "esphome/core/log.h"
 
 namespace esphome

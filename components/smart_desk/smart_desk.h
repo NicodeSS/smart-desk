@@ -5,6 +5,8 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include <stdint.h>
+#include <string>
 
 #include "rx_decoder.h"
 #include "tx_verifier.h"
@@ -89,6 +91,11 @@ namespace esphome
                 max_desk_height = v;
             }
 
+            void set_offline_tx_interval_ms(uint32_t v)
+            {
+                offline_tx_interval_ms = v < MIN_OFFLINE_TX_INTERVAL_MS ? MIN_OFFLINE_TX_INTERVAL_MS : v;
+            }
+
         protected:
             sensor::Sensor *sensor_height{nullptr};
             text_sensor::TextSensor *text_sensor_status{nullptr};
@@ -106,6 +113,18 @@ namespace esphome
             bool is_initial_command_sent = false;
             int handset_timeout_count = 0;
             int max_handset_timeout_count = 5000;
+            uint32_t last_offline_tx_ms = 0;
+            uint32_t offline_tx_interval_ms = 20;
+            uint32_t last_handset_idle_frame_ms = 0;
+            uint32_t learned_handset_idle_interval_ms = 0;
+            bool has_logged_learned_interval = false;
+            static constexpr uint32_t MIN_OFFLINE_TX_INTERVAL_MS = 5;
+            static constexpr uint32_t MIN_LEARNED_IDLE_INTERVAL_MS = 5;
+            static constexpr uint32_t MAX_LEARNED_IDLE_INTERVAL_MS = 100;
+
+            uint32_t get_offline_tx_interval_ms_() const;
+            void observe_handset_frame_(const uint8_t *buf, uint32_t now);
+
         };
 
     }
