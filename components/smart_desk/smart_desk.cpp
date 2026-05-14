@@ -150,6 +150,7 @@ namespace esphome
                         if (text_sensor_display != nullptr)
                             text_sensor_display->publish_state(rx_decoder->get_desk_display());
                         rx_decoder->set_updated();
+                        publish_diagnostics_();
                     }
                     break;
                 }
@@ -168,6 +169,22 @@ namespace esphome
             ESP_LOGCONFIG(TAG, "Move command repeat: %d", move_command_repeat);
             ESP_LOGCONFIG(TAG, "Move command interval: %" PRIu32 " ms", move_command_interval_ms);
             ESP_LOGCONFIG(TAG, "Move timeout: %" PRIu32 " ms", move_timeout_ms);
+            ESP_LOGCONFIG(TAG, "Move stall timeout: %" PRIu32 " ms", move_stall_timeout_ms);
+            ESP_LOGCONFIG(TAG, "Move stall tolerance: %.1f cm", move_stall_tolerance);
+        }
+
+        std::string SmartDesk::get_movement_state() const
+        {
+            switch (move_state)
+            {
+            case MOVE_UP:
+                return "up";
+            case MOVE_DOWN:
+                return "down";
+            case MOVE_IDLE:
+            default:
+                return "idle";
+            }
         }
 
         uint32_t SmartDesk::get_offline_tx_interval_ms_() const
@@ -225,28 +242,41 @@ namespace esphome
 
             if (std::fabs(current_height - this->target_height) <= move_tolerance)
             {
-                this->stop_moving();
+                this->finish_move_("reached");
                 return true;
             }
 
             move_state = current_height < this->target_height ? MOVE_UP : MOVE_DOWN;
             move_started_ms = millis();
             last_move_command_ms = 0;
+            last_move_progress_ms = move_started_ms;
+            last_move_progress_height = current_height;
+            last_move_result = "moving";
+            publish_diagnostics_();
             ESP_LOGI(TAG, "Moving desk from %.1f cm to %.1f cm", current_height, this->target_height);
             return true;
         }
 
         void SmartDesk::stop_moving()
         {
+            this->finish_move_("stopped");
+        }
+
+        void SmartDesk::finish_move_(const std::string &result)
+        {
             if (move_state != MOVE_IDLE)
             {
                 ESP_LOGI(TAG, "Stopping desk move at %.1f cm", current_height);
             }
+            last_move_result = result;
             move_state = MOVE_IDLE;
             target_height = NAN;
             move_started_ms = 0;
             last_move_command_ms = 0;
+            last_move_progress_ms = 0;
+            last_move_progress_height = NAN;
             this->clear_commands();
+            publish_diagnostics_();
         }
 
         void SmartDesk::process_move_()
@@ -260,7 +290,7 @@ namespace esphome
             if (now - move_started_ms > move_timeout_ms)
             {
                 ESP_LOGW(TAG, "Timed out moving desk toward %.1f cm", target_height);
-                this->stop_moving();
+                this->finish_move_("timeout");
                 return;
             }
 
@@ -273,7 +303,20 @@ namespace esphome
             if (std::fabs(error) <= move_tolerance)
             {
                 ESP_LOGI(TAG, "Reached desk target %.1f cm (current %.1f cm)", target_height, current_height);
-                this->stop_moving();
+                this->finish_move_("reached");
+                return;
+            }
+
+            if (std::isnan(last_move_progress_height) ||
+                std::fabs(current_height - last_move_progress_height) >= move_stall_tolerance)
+            {
+                last_move_progress_height = current_height;
+                last_move_progress_ms = now;
+            }
+            else if (last_move_progress_ms != 0 && now - last_move_progress_ms > move_stall_timeout_ms)
+            {
+                ESP_LOGW(TAG, "Desk move stalled at %.1f cm while targeting %.1f cm", current_height, target_height);
+                this->finish_move_("stalled");
                 return;
             }
 
@@ -293,6 +336,26 @@ namespace esphome
             if (add_command(move_state == MOVE_UP ? "U" : "D", move_command_repeat))
             {
                 last_move_command_ms = now;
+            }
+        }
+
+        void SmartDesk::publish_diagnostics_()
+        {
+            if (sensor_target_height != nullptr)
+            {
+                sensor_target_height->publish_state(target_height);
+            }
+            if (sensor_learned_idle_interval != nullptr)
+            {
+                sensor_learned_idle_interval->publish_state(learned_handset_idle_interval_ms);
+            }
+            if (text_sensor_movement != nullptr)
+            {
+                text_sensor_movement->publish_state(get_movement_state());
+            }
+            if (text_sensor_last_move_result != nullptr)
+            {
+                text_sensor_last_move_result->publish_state(last_move_result);
             }
         }
 

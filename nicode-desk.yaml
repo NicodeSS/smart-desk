@@ -78,12 +78,18 @@ smart_desk:
   move_command_repeat: 4
   move_command_interval: 80ms
   move_timeout: 30s
+  move_stall_timeout: 3s
+  move_stall_tolerance: 0.2
 
 sensor:
   - platform: smart_desk
     id: smart_desk_ins
     height:
       name: Current Height
+    target_height:
+      name: Target Height Diagnostic
+    learned_idle_interval:
+      name: Learned Idle Interval
 
 text_sensor:
   - platform: smart_desk
@@ -92,6 +98,10 @@ text_sensor:
       name: Status
     display:
       name: Last Displayed
+    movement:
+      name: Movement
+    last_move_result:
+      name: Last Move Result
 
 binary_sensor:
   - platform: smart_desk

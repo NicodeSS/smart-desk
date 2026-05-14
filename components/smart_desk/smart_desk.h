@@ -49,6 +49,14 @@ namespace esphome
             {
                 this->sensor_height = sensor_;
             }
+            void set_sensor_target_height(sensor::Sensor *sensor_)
+            {
+                this->sensor_target_height = sensor_;
+            }
+            void set_sensor_learned_idle_interval(sensor::Sensor *sensor_)
+            {
+                this->sensor_learned_idle_interval = sensor_;
+            }
             void set_text_sensor_status(text_sensor::TextSensor *text_sensor_)
             {
                 this->text_sensor_status = text_sensor_;
@@ -56,6 +64,14 @@ namespace esphome
             void set_text_sensor_display(text_sensor::TextSensor *text_sensor_)
             {
                 this->text_sensor_display = text_sensor_;
+            }
+            void set_text_sensor_movement(text_sensor::TextSensor *text_sensor_)
+            {
+                this->text_sensor_movement = text_sensor_;
+            }
+            void set_text_sensor_last_move_result(text_sensor::TextSensor *text_sensor_)
+            {
+                this->text_sensor_last_move_result = text_sensor_;
             }
             void set_binary_sensor_handset_online(binary_sensor::BinarySensor *binary_sensor_)
             {
@@ -130,6 +146,15 @@ namespace esphome
             {
                 return target_height;
             }
+            uint32_t get_learned_idle_interval_ms() const
+            {
+                return learned_handset_idle_interval_ms;
+            }
+            std::string get_movement_state() const;
+            std::string get_last_move_result() const
+            {
+                return last_move_result;
+            }
 
             void set_max_handset_timeout_count(int v)
             {
@@ -171,6 +196,14 @@ namespace esphome
             {
                 move_timeout_ms = v;
             }
+            void set_move_stall_timeout_ms(uint32_t v)
+            {
+                move_stall_timeout_ms = v;
+            }
+            void set_move_stall_tolerance(float v)
+            {
+                move_stall_tolerance = v;
+            }
 
         protected:
             typedef enum
@@ -181,8 +214,12 @@ namespace esphome
             } move_state_t;
 
             sensor::Sensor *sensor_height{nullptr};
+            sensor::Sensor *sensor_target_height{nullptr};
+            sensor::Sensor *sensor_learned_idle_interval{nullptr};
             text_sensor::TextSensor *text_sensor_status{nullptr};
             text_sensor::TextSensor *text_sensor_display{nullptr};
+            text_sensor::TextSensor *text_sensor_movement{nullptr};
+            text_sensor::TextSensor *text_sensor_last_move_result{nullptr};
             binary_sensor::BinarySensor *binary_sensor_handset_online{nullptr};
 
             RxDecoder *rx_decoder{nullptr};
@@ -199,8 +236,13 @@ namespace esphome
             int move_command_repeat = 4;
             uint32_t move_command_interval_ms = 80;
             uint32_t move_timeout_ms = 30000;
+            uint32_t move_stall_timeout_ms = 3000;
+            float move_stall_tolerance = 0.2f;
             uint32_t move_started_ms = 0;
             uint32_t last_move_command_ms = 0;
+            uint32_t last_move_progress_ms = 0;
+            float last_move_progress_height = NAN;
+            std::string last_move_result = "idle";
 
             bool is_handset_online = false;
             bool is_initial_command_sent = false;
@@ -218,6 +260,8 @@ namespace esphome
             uint32_t get_offline_tx_interval_ms_() const;
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
             void process_move_();
+            void finish_move_(const std::string &result);
+            void publish_diagnostics_();
 
         };
 

@@ -85,7 +85,6 @@ namespace esphome
                 if (this->parent_->start_move_to_position(position))
                 {
                     const int direction = this->parent_->get_move_direction();
-                    this->position = position;
                     if (direction > 0)
                     {
                         this->current_operation = cover::COVER_OPERATION_OPENING;
@@ -98,7 +97,6 @@ namespace esphome
                     {
                         this->current_operation = cover::COVER_OPERATION_IDLE;
                     }
-                    last_published_position = position;
                     last_published_operation = this->current_operation;
                     this->publish_state();
                 }
