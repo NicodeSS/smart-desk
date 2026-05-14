@@ -207,6 +207,10 @@ namespace esphome
             {
                 move_stop_margin_max = v;
             }
+            void set_move_endpoint_tolerance(float v)
+            {
+                move_endpoint_tolerance = v;
+            }
             void set_move_command_repeat(int v)
             {
                 move_command_repeat = v;
@@ -290,6 +294,7 @@ namespace esphome
             float move_stop_margin_per_cm = 0.36f;
             float move_stop_margin_min = 0.45f;
             float move_stop_margin_max = 1.2f;
+            float move_endpoint_tolerance = 0.05f;
             int move_command_repeat = 4;
             uint32_t move_command_interval_ms = 80;
             uint32_t move_timeout_ms = 30000;
@@ -418,6 +423,8 @@ namespace esphome
             void start_button_action_(const std::string &button_chars);
             void process_button_action_(uint32_t now);
             void finish_button_action_(const std::string &result);
+            bool is_endpoint_target_() const;
+            bool is_endpoint_target_reached_() const;
             bool enqueue_command_(std::string button_chars, int repeat);
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
             void observe_manual_handset_frame_(const uint8_t *buf, uint32_t now);

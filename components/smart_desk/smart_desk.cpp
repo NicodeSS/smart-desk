@@ -198,6 +198,7 @@ namespace esphome
             ESP_LOGCONFIG(TAG, "Move stop margin: base %.2f cm + %.2f * traveled cm, clamped %.2f-%.2f cm",
                           move_stop_margin_base, move_stop_margin_per_cm,
                           move_stop_margin_min, move_stop_margin_max);
+            ESP_LOGCONFIG(TAG, "Move endpoint tolerance: %.2f cm", move_endpoint_tolerance);
             ESP_LOGCONFIG(TAG, "Move command repeat: %d", move_command_repeat);
             ESP_LOGCONFIG(TAG, "Move command interval: %" PRIu32 " ms", move_command_interval_ms);
             ESP_LOGCONFIG(TAG, "Move timeout: %" PRIu32 " ms", move_timeout_ms);
@@ -1025,7 +1026,8 @@ namespace esphome
             this->target_height = target_height;
             this->clear_commands();
 
-            if (std::fabs(current_height - this->target_height) <= move_tolerance)
+            if (this->is_endpoint_target_() ? this->is_endpoint_target_reached_() :
+                                              std::fabs(current_height - this->target_height) <= move_tolerance)
             {
                 this->finish_move_("reached");
                 return true;
@@ -1103,7 +1105,8 @@ namespace esphome
             const float error = target_height - current_height;
             const float stop_margin = this->get_move_stop_margin_();
             last_move_stop_margin = stop_margin;
-            if (std::fabs(error) <= stop_margin)
+            if (this->is_endpoint_target_() ? this->is_endpoint_target_reached_() :
+                                              std::fabs(error) <= stop_margin)
             {
                 ESP_LOGI(TAG, "Reached desk target %.1f cm (current %.1f cm, stop margin %.2f cm)",
                          target_height, current_height, stop_margin);
@@ -1170,6 +1173,10 @@ namespace esphome
             {
                 return move_tolerance;
             }
+            if (this->is_endpoint_target_())
+            {
+                return move_endpoint_tolerance;
+            }
 
             const float traveled = std::fabs(current_height - move_start_height);
             float margin = move_stop_margin_base + traveled * move_stop_margin_per_cm;
@@ -1185,6 +1192,33 @@ namespace esphome
                 margin = max_margin;
             }
             return margin;
+        }
+
+        bool SmartDesk::is_endpoint_target_() const
+        {
+            if (std::isnan(target_height))
+            {
+                return false;
+            }
+            return target_height <= min_desk_height + 0.01f ||
+                   target_height >= max_desk_height - 0.01f;
+        }
+
+        bool SmartDesk::is_endpoint_target_reached_() const
+        {
+            if (std::isnan(current_height) || std::isnan(target_height))
+            {
+                return false;
+            }
+            if (target_height <= min_desk_height + 0.01f)
+            {
+                return current_height <= target_height + move_endpoint_tolerance;
+            }
+            if (target_height >= max_desk_height - 0.01f)
+            {
+                return current_height >= target_height - move_endpoint_tolerance;
+            }
+            return std::fabs(target_height - current_height) <= move_tolerance;
         }
 
         void SmartDesk::sync_decoder_height_range_()

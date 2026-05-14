@@ -22,6 +22,7 @@ CONF_MOVE_STOP_MARGIN_BASE = 'move_stop_margin_base'
 CONF_MOVE_STOP_MARGIN_PER_CM = 'move_stop_margin_per_cm'
 CONF_MOVE_STOP_MARGIN_MIN = 'move_stop_margin_min'
 CONF_MOVE_STOP_MARGIN_MAX = 'move_stop_margin_max'
+CONF_MOVE_ENDPOINT_TOLERANCE = 'move_endpoint_tolerance'
 CONF_MOVE_COMMAND_REPEAT = 'move_command_repeat'
 CONF_MOVE_COMMAND_INTERVAL = 'move_command_interval'
 CONF_MOVE_TIMEOUT = 'move_timeout'
@@ -53,6 +54,7 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_MOVE_STOP_MARGIN_PER_CM, default=0.36): cv.float_range(min=0.0, max=2.0),
         cv.Optional(CONF_MOVE_STOP_MARGIN_MIN, default=0.45): cv.float_range(min=0.0, max=5.0),
         cv.Optional(CONF_MOVE_STOP_MARGIN_MAX, default=1.2): cv.float_range(min=0.0, max=5.0),
+        cv.Optional(CONF_MOVE_ENDPOINT_TOLERANCE, default=0.05): cv.float_range(min=0.0, max=1.0),
         cv.Optional(CONF_MOVE_COMMAND_REPEAT, default=4): cv.int_range(min=1, max=16),
         cv.Optional(CONF_MOVE_COMMAND_INTERVAL, default="80ms"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_MOVE_TIMEOUT, default="30s"): cv.positive_time_period_milliseconds,
@@ -84,6 +86,7 @@ async def to_code(config):
     cg.add(var.set_move_stop_margin_per_cm(config[CONF_MOVE_STOP_MARGIN_PER_CM]))
     cg.add(var.set_move_stop_margin_min(config[CONF_MOVE_STOP_MARGIN_MIN]))
     cg.add(var.set_move_stop_margin_max(config[CONF_MOVE_STOP_MARGIN_MAX]))
+    cg.add(var.set_move_endpoint_tolerance(config[CONF_MOVE_ENDPOINT_TOLERANCE]))
     cg.add(var.set_move_command_repeat(config[CONF_MOVE_COMMAND_REPEAT]))
     cg.add(var.set_move_command_interval_ms(config[CONF_MOVE_COMMAND_INTERVAL].total_milliseconds))
     cg.add(var.set_move_timeout_ms(config[CONF_MOVE_TIMEOUT].total_milliseconds))

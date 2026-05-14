@@ -79,6 +79,7 @@ smart_desk:
   move_stop_margin_per_cm: 0.36
   move_stop_margin_min: 0.45
   move_stop_margin_max: 1.2
+  move_endpoint_tolerance: 0.05
   move_command_repeat: 4
   move_command_interval: 80ms
   move_timeout: 30s
