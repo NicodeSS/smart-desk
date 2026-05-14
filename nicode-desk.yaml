@@ -74,6 +74,10 @@ smart_desk:
   max_handset_timeout_count: 50
   default_tx_command_repeat: 8
   offline_tx_interval: 20ms
+  move_tolerance: 0.4
+  move_command_repeat: 4
+  move_command_interval: 80ms
+  move_timeout: 30s
 
 sensor:
   - platform: smart_desk
@@ -94,6 +98,21 @@ binary_sensor:
     id: smart_desk_ins
     handset_online:
       name: Handset Connectivity
+
+number:
+  - platform: smart_desk
+    smart_desk_id: smart_desk_ins
+    id: target_height
+    name: "Target Height"
+    min_height: 62.0
+    max_height: 127.0
+    step: 0.5
+
+cover:
+  - platform: smart_desk
+    smart_desk_id: smart_desk_ins
+    id: desk_position
+    name: "Desk Position"
 
 # output:
 #   - platform: gpio

@@ -142,8 +142,9 @@ namespace esphome
                     uart_handset->write_array(buf, 5);
                     if (!rx_decoder->is_updated())
                     {
+                        current_height = rx_decoder->get_desk_height();
                         if (sensor_height != nullptr)
-                            sensor_height->publish_state(rx_decoder->get_desk_height());
+                            sensor_height->publish_state(current_height);
                         if (text_sensor_status != nullptr)
                             text_sensor_status->publish_state(rx_decoder->get_desk_state());
                         if (text_sensor_display != nullptr)
@@ -153,6 +154,7 @@ namespace esphome
                     break;
                 }
             }
+            process_move_();
         }
 
         void SmartDesk::dump_config()
@@ -162,6 +164,10 @@ namespace esphome
             ESP_LOGCONFIG(TAG, "Default command repeat: %d", default_tx_command_repeat);
             ESP_LOGCONFIG(TAG, "Offline TX interval: %" PRIu32 " ms", offline_tx_interval_ms);
             ESP_LOGCONFIG(TAG, "Learned handset idle interval: %" PRIu32 " ms", learned_handset_idle_interval_ms);
+            ESP_LOGCONFIG(TAG, "Move tolerance: %.1f cm", move_tolerance);
+            ESP_LOGCONFIG(TAG, "Move command repeat: %d", move_command_repeat);
+            ESP_LOGCONFIG(TAG, "Move command interval: %" PRIu32 " ms", move_command_interval_ms);
+            ESP_LOGCONFIG(TAG, "Move timeout: %" PRIu32 " ms", move_timeout_ms);
         }
 
         uint32_t SmartDesk::get_offline_tx_interval_ms_() const
@@ -198,6 +204,96 @@ namespace esphome
                 }
             }
             last_handset_idle_frame_ms = now;
+        }
+
+        bool SmartDesk::start_move_to_height(float target_height)
+        {
+            if (std::isnan(current_height))
+            {
+                ESP_LOGW(TAG, "Cannot move desk: current height is unknown");
+                return false;
+            }
+            if (target_height < min_desk_height || target_height > max_desk_height)
+            {
+                ESP_LOGW(TAG, "Target height %.1f cm is outside %.1f-%.1f cm",
+                         target_height, min_desk_height, max_desk_height);
+                return false;
+            }
+
+            this->target_height = target_height;
+            this->clear_commands();
+
+            if (std::fabs(current_height - this->target_height) <= move_tolerance)
+            {
+                this->stop_moving();
+                return true;
+            }
+
+            move_state = current_height < this->target_height ? MOVE_UP : MOVE_DOWN;
+            move_started_ms = millis();
+            last_move_command_ms = 0;
+            ESP_LOGI(TAG, "Moving desk from %.1f cm to %.1f cm", current_height, this->target_height);
+            return true;
+        }
+
+        void SmartDesk::stop_moving()
+        {
+            if (move_state != MOVE_IDLE)
+            {
+                ESP_LOGI(TAG, "Stopping desk move at %.1f cm", current_height);
+            }
+            move_state = MOVE_IDLE;
+            target_height = NAN;
+            move_started_ms = 0;
+            last_move_command_ms = 0;
+            this->clear_commands();
+        }
+
+        void SmartDesk::process_move_()
+        {
+            if (move_state == MOVE_IDLE)
+            {
+                return;
+            }
+
+            const uint32_t now = millis();
+            if (now - move_started_ms > move_timeout_ms)
+            {
+                ESP_LOGW(TAG, "Timed out moving desk toward %.1f cm", target_height);
+                this->stop_moving();
+                return;
+            }
+
+            if (std::isnan(current_height))
+            {
+                return;
+            }
+
+            const float error = target_height - current_height;
+            if (std::fabs(error) <= move_tolerance)
+            {
+                ESP_LOGI(TAG, "Reached desk target %.1f cm (current %.1f cm)", target_height, current_height);
+                this->stop_moving();
+                return;
+            }
+
+            const move_state_t next_state = error > 0.0f ? MOVE_UP : MOVE_DOWN;
+            if (next_state != move_state)
+            {
+                this->clear_commands();
+                move_state = next_state;
+                last_move_command_ms = 0;
+            }
+
+            if (!tx_controller->is_empty() || (last_move_command_ms != 0 && now - last_move_command_ms < move_command_interval_ms))
+            {
+                return;
+            }
+
+            if (add_command(move_state == MOVE_UP ? "U" : "D", move_command_repeat))
+            {
+                last_move_command_ms = now;
+            }
         }
 
         bool SmartDesk::add_command(std::string button_chars, int repeat)

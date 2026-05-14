@@ -46,5 +46,12 @@ namespace esphome
             return result;
         }
 
+        void TxController::clear()
+        {
+            head = queue;
+            tail = queue;
+            count = 0;
+        }
+
     }
 }

@@ -5,6 +5,7 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include <cmath>
 #include <stdint.h>
 #include <string>
 
@@ -70,6 +71,65 @@ namespace esphome
             {
                 return is_handset_online;
             }
+            float get_current_height() const
+            {
+                return current_height;
+            }
+            float get_min_height() const
+            {
+                return min_desk_height;
+            }
+            float get_max_height() const
+            {
+                return max_desk_height;
+            }
+            float height_to_position(float height) const
+            {
+                const float range = max_desk_height - min_desk_height;
+                if (std::isnan(height) || range <= 0.0f)
+                    return NAN;
+                float position = (height - min_desk_height) / range;
+                if (position < 0.0f)
+                    return 0.0f;
+                if (position > 1.0f)
+                    return 1.0f;
+                return position;
+            }
+            float position_to_height(float position) const
+            {
+                if (position < 0.0f)
+                    position = 0.0f;
+                if (position > 1.0f)
+                    position = 1.0f;
+                return min_desk_height + position * (max_desk_height - min_desk_height);
+            }
+            void clear_commands()
+            {
+                if (tx_controller != nullptr)
+                    tx_controller->clear();
+            }
+            bool start_move_to_height(float target_height);
+            bool start_move_to_position(float position)
+            {
+                return start_move_to_height(position_to_height(position));
+            }
+            void stop_moving();
+            bool is_moving() const
+            {
+                return move_state != MOVE_IDLE;
+            }
+            int get_move_direction() const
+            {
+                if (move_state == MOVE_UP)
+                    return 1;
+                if (move_state == MOVE_DOWN)
+                    return -1;
+                return 0;
+            }
+            float get_target_height() const
+            {
+                return target_height;
+            }
 
             void set_max_handset_timeout_count(int v)
             {
@@ -95,8 +155,31 @@ namespace esphome
             {
                 offline_tx_interval_ms = v < MIN_OFFLINE_TX_INTERVAL_MS ? MIN_OFFLINE_TX_INTERVAL_MS : v;
             }
+            void set_move_tolerance(float v)
+            {
+                move_tolerance = v;
+            }
+            void set_move_command_repeat(int v)
+            {
+                move_command_repeat = v;
+            }
+            void set_move_command_interval_ms(uint32_t v)
+            {
+                move_command_interval_ms = v;
+            }
+            void set_move_timeout_ms(uint32_t v)
+            {
+                move_timeout_ms = v;
+            }
 
         protected:
+            typedef enum
+            {
+                MOVE_IDLE,
+                MOVE_UP,
+                MOVE_DOWN,
+            } move_state_t;
+
             sensor::Sensor *sensor_height{nullptr};
             text_sensor::TextSensor *text_sensor_status{nullptr};
             text_sensor::TextSensor *text_sensor_display{nullptr};
@@ -108,6 +191,16 @@ namespace esphome
 
             uart::UARTComponent *uart_control{nullptr};
             uart::UARTComponent *uart_handset{nullptr};
+
+            float current_height = NAN;
+            float target_height = NAN;
+            move_state_t move_state = MOVE_IDLE;
+            float move_tolerance = 0.4f;
+            int move_command_repeat = 4;
+            uint32_t move_command_interval_ms = 80;
+            uint32_t move_timeout_ms = 30000;
+            uint32_t move_started_ms = 0;
+            uint32_t last_move_command_ms = 0;
 
             bool is_handset_online = false;
             bool is_initial_command_sent = false;
@@ -124,6 +217,7 @@ namespace esphome
 
             uint32_t get_offline_tx_interval_ms_() const;
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
+            void process_move_();
 
         };
 

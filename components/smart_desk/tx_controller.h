@@ -32,6 +32,7 @@ namespace esphome
                 return enqueue(command, default_tx_command_repeat);
             }
             const TxCommand *pop();
+            void clear();
 
             bool is_empty()
             {
