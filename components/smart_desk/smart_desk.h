@@ -183,6 +183,22 @@ namespace esphome
             {
                 move_tolerance = v;
             }
+            void set_move_stop_margin_base(float v)
+            {
+                move_stop_margin_base = v;
+            }
+            void set_move_stop_margin_per_cm(float v)
+            {
+                move_stop_margin_per_cm = v;
+            }
+            void set_move_stop_margin_min(float v)
+            {
+                move_stop_margin_min = v;
+            }
+            void set_move_stop_margin_max(float v)
+            {
+                move_stop_margin_max = v;
+            }
             void set_move_command_repeat(int v)
             {
                 move_command_repeat = v;
@@ -255,12 +271,18 @@ namespace esphome
             int default_tx_command_repeat = 5;
             move_state_t move_state = MOVE_IDLE;
             float move_tolerance = 0.4f;
+            float move_stop_margin_base = 0.3f;
+            float move_stop_margin_per_cm = 0.36f;
+            float move_stop_margin_min = 0.45f;
+            float move_stop_margin_max = 1.2f;
             int move_command_repeat = 4;
             uint32_t move_command_interval_ms = 80;
             uint32_t move_timeout_ms = 30000;
             uint32_t move_stall_timeout_ms = 3000;
             float move_stall_tolerance = 0.2f;
             uint32_t move_started_ms = 0;
+            float move_start_height = NAN;
+            float last_move_stop_margin = NAN;
             uint32_t last_move_command_ms = 0;
             uint32_t last_move_progress_ms = 0;
             float last_move_progress_height = NAN;
@@ -368,6 +390,7 @@ namespace esphome
             void observe_target_rx_update_(const uint8_t *buf, uint32_t now);
             void finish_target_move_debug_(uint32_t now, const std::string &result);
             void maybe_log_target_move_final_sample_(uint32_t now);
+            float get_move_stop_margin_() const;
             manual_move_direction_t get_handset_direction_(const uint8_t *buf) const;
             const char *manual_move_direction_to_string_(manual_move_direction_t direction) const;
             void store_debug_frame_(DebugFrame *frames, size_t &next, size_t &count, const uint8_t *buf, uint32_t now, uint32_t started_ms);

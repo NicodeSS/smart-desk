@@ -75,6 +75,10 @@ smart_desk:
   default_tx_command_repeat: 8
   offline_tx_interval: 20ms
   move_tolerance: 0.4
+  move_stop_margin_base: 0.3
+  move_stop_margin_per_cm: 0.36
+  move_stop_margin_min: 0.45
+  move_stop_margin_max: 1.2
   move_command_repeat: 4
   move_command_interval: 80ms
   move_timeout: 30s

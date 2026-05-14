@@ -176,6 +176,9 @@ namespace esphome
             ESP_LOGCONFIG(TAG, "Offline TX interval: %" PRIu32 " ms", offline_tx_interval_ms);
             ESP_LOGCONFIG(TAG, "Learned handset idle interval: %" PRIu32 " ms", learned_handset_idle_interval_ms);
             ESP_LOGCONFIG(TAG, "Move tolerance: %.1f cm", move_tolerance);
+            ESP_LOGCONFIG(TAG, "Move stop margin: base %.2f cm + %.2f * traveled cm, clamped %.2f-%.2f cm",
+                          move_stop_margin_base, move_stop_margin_per_cm,
+                          move_stop_margin_min, move_stop_margin_max);
             ESP_LOGCONFIG(TAG, "Move command repeat: %d", move_command_repeat);
             ESP_LOGCONFIG(TAG, "Move command interval: %" PRIu32 " ms", move_command_interval_ms);
             ESP_LOGCONFIG(TAG, "Move timeout: %" PRIu32 " ms", move_timeout_ms);
@@ -575,8 +578,8 @@ namespace esphome
 
             ESP_LOGW(TAG, "Target move ended: result=%s direction=%s duration=%" PRIu32 "ms target=%.1f",
                      result.c_str(), manual_move_direction_to_string_(target_move_direction), duration, target_move_target_height);
-            ESP_LOGW(TAG, "  requested_delta=%.1f traveled_delta=%.1f avg_speed=%.2fcm/s instant_overshoot=%.1f",
-                     requested, delta, avg_speed, target_move_instant_overshoot);
+            ESP_LOGW(TAG, "  requested_delta=%.1f traveled_delta=%.1f avg_speed=%.2fcm/s stop_margin=%.2f instant_overshoot=%.1f",
+                     requested, delta, avg_speed, last_move_stop_margin, target_move_instant_overshoot);
             ESP_LOGW(TAG, "  tx_frames=%" PRIu32 " up=%" PRIu32 " down=%" PRIu32 " normal=%" PRIu32 " other=%" PRIu32,
                      target_move_sent_frames, target_move_up_frames, target_move_down_frames,
                      target_move_normal_frames, target_move_other_frames);
@@ -738,6 +741,8 @@ namespace esphome
 
             move_state = current_height < this->target_height ? MOVE_UP : MOVE_DOWN;
             move_started_ms = millis();
+            move_start_height = current_height;
+            last_move_stop_margin = this->get_move_stop_margin_();
             last_move_command_ms = 0;
             last_move_progress_ms = move_started_ms;
             last_move_progress_height = current_height;
@@ -764,6 +769,8 @@ namespace esphome
             move_state = MOVE_IDLE;
             target_height = NAN;
             move_started_ms = 0;
+            move_start_height = NAN;
+            last_move_stop_margin = NAN;
             last_move_command_ms = 0;
             last_move_progress_ms = 0;
             last_move_progress_height = NAN;
@@ -792,9 +799,12 @@ namespace esphome
             }
 
             const float error = target_height - current_height;
-            if (std::fabs(error) <= move_tolerance)
+            const float stop_margin = this->get_move_stop_margin_();
+            last_move_stop_margin = stop_margin;
+            if (std::fabs(error) <= stop_margin)
             {
-                ESP_LOGI(TAG, "Reached desk target %.1f cm (current %.1f cm)", target_height, current_height);
+                ESP_LOGI(TAG, "Reached desk target %.1f cm (current %.1f cm, stop margin %.2f cm)",
+                         target_height, current_height, stop_margin);
                 this->finish_move_("reached");
                 return;
             }
@@ -850,6 +860,29 @@ namespace esphome
             {
                 text_sensor_last_move_result->publish_state(last_move_result);
             }
+        }
+
+        float SmartDesk::get_move_stop_margin_() const
+        {
+            if (std::isnan(move_start_height) || std::isnan(current_height) || std::isnan(target_height))
+            {
+                return move_tolerance;
+            }
+
+            const float traveled = std::fabs(current_height - move_start_height);
+            float margin = move_stop_margin_base + traveled * move_stop_margin_per_cm;
+            const float min_margin = move_stop_margin_min > move_tolerance ? move_stop_margin_min : move_tolerance;
+            const float max_margin = move_stop_margin_max > min_margin ? move_stop_margin_max : min_margin;
+
+            if (margin < min_margin)
+            {
+                margin = min_margin;
+            }
+            if (margin > max_margin)
+            {
+                margin = max_margin;
+            }
+            return margin;
         }
 
         void SmartDesk::sync_decoder_height_range_()
