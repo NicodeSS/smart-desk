@@ -260,7 +260,7 @@ namespace esphome
 
             uint32_t get_offline_tx_interval_ms_() const;
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
-            void process_move_();
+            void process_move_(bool force_command_refill = false);
             void finish_move_(const std::string &result);
             void publish_diagnostics_();
             void sync_decoder_height_range_();

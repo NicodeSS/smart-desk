@@ -76,6 +76,7 @@ namespace esphome
                     {
                         const uint32_t now = millis();
                         observe_handset_frame_(tx_verifier->get_buffer(), now);
+                        process_move_(true);
 
                         if (!tx_controller->is_empty())
                         {
@@ -100,6 +101,7 @@ namespace esphome
                 if (now - last_offline_tx_ms >= get_offline_tx_interval_ms_())
                 {
                     last_offline_tx_ms = now;
+                    process_move_(true);
 
                     if (!tx_controller->is_empty())
                     {
@@ -281,7 +283,7 @@ namespace esphome
             publish_diagnostics_();
         }
 
-        void SmartDesk::process_move_()
+        void SmartDesk::process_move_(bool force_command_refill)
         {
             if (move_state == MOVE_IDLE)
             {
@@ -330,7 +332,8 @@ namespace esphome
                 last_move_command_ms = 0;
             }
 
-            if (!tx_controller->is_empty() || (last_move_command_ms != 0 && now - last_move_command_ms < move_command_interval_ms))
+            if (!tx_controller->is_empty() ||
+                (!force_command_refill && last_move_command_ms != 0 && now - last_move_command_ms < move_command_interval_ms))
             {
                 return;
             }
