@@ -161,6 +161,8 @@ namespace esphome
                     if (!rx_decoder->is_updated())
                     {
                         current_height = rx_decoder->get_desk_height();
+                        const uint32_t now = millis();
+                        process_button_action_(now);
                         if (sensor_height != nullptr)
                             sensor_height->publish_state(current_height);
                         if (text_sensor_status != nullptr)
@@ -169,7 +171,6 @@ namespace esphome
                             text_sensor_display->publish_state(rx_decoder->get_desk_display());
                         rx_decoder->set_updated();
                         publish_diagnostics_();
-                        const uint32_t now = millis();
                         observe_manual_rx_update_(buf, now);
                         observe_target_rx_update_(buf, now);
                     }
@@ -182,6 +183,7 @@ namespace esphome
                 process_move_();
             maybe_finish_manual_move_(millis());
             maybe_log_target_move_final_sample_(millis());
+            process_button_action_(millis());
         }
 
         void SmartDesk::dump_config()
@@ -208,6 +210,14 @@ namespace esphome
             if (reset_state != RESET_IDLE)
             {
                 return reset_state_to_string_(reset_state);
+            }
+            if (button_action_active)
+            {
+                if (button_action_direction > 0)
+                    return "up";
+                if (button_action_direction < 0)
+                    return "down";
+                return "button";
             }
             switch (move_state)
             {
@@ -300,6 +310,101 @@ namespace esphome
             reset_seen_display = false;
             last_move_result = result;
             this->clear_commands();
+            publish_diagnostics_();
+        }
+
+        bool SmartDesk::should_track_button_action_(const std::string &button_chars) const
+        {
+            for (char button_char : button_chars)
+            {
+                switch (button_char)
+                {
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case 'U':
+                case 'D':
+                    return true;
+                default:
+                    break;
+                }
+            }
+            return false;
+        }
+
+        void SmartDesk::start_button_action_(const std::string &button_chars)
+        {
+            const uint32_t now = millis();
+            button_action_active = true;
+            button_action_command = button_chars;
+            button_action_started_ms = now;
+            button_action_last_progress_ms = now;
+            button_action_last_height = current_height;
+            button_action_direction = 0;
+            if (button_chars.find('U') != std::string::npos)
+                button_action_direction = 1;
+            else if (button_chars.find('D') != std::string::npos)
+                button_action_direction = -1;
+            last_move_result = "button_moving";
+            publish_diagnostics_();
+        }
+
+        void SmartDesk::process_button_action_(uint32_t now)
+        {
+            if (!button_action_active)
+            {
+                return;
+            }
+            if (this->is_reset_active_() || move_state != MOVE_IDLE)
+            {
+                this->finish_button_action_("button_cancelled");
+                return;
+            }
+
+            if (!std::isnan(current_height) && !std::isnan(button_action_last_height))
+            {
+                const float delta = current_height - button_action_last_height;
+                if (std::fabs(delta) >= move_stall_tolerance)
+                {
+                    button_action_direction = delta > 0.0f ? 1 : -1;
+                    button_action_last_height = current_height;
+                    button_action_last_progress_ms = now;
+                    last_move_result = "button_moving";
+                    publish_diagnostics_();
+                    return;
+                }
+            }
+            else if (!std::isnan(current_height))
+            {
+                button_action_last_height = current_height;
+                button_action_last_progress_ms = now;
+            }
+
+            if (now - button_action_started_ms > button_action_timeout_ms)
+            {
+                this->finish_button_action_("button_timeout");
+                return;
+            }
+            if (now - button_action_last_progress_ms > button_action_idle_timeout_ms)
+            {
+                this->finish_button_action_("button_done");
+            }
+        }
+
+        void SmartDesk::finish_button_action_(const std::string &result)
+        {
+            if (!button_action_active)
+            {
+                return;
+            }
+            button_action_active = false;
+            button_action_command.clear();
+            button_action_started_ms = 0;
+            button_action_last_progress_ms = 0;
+            button_action_last_height = NAN;
+            button_action_direction = 0;
+            last_move_result = result;
             publish_diagnostics_();
         }
 
@@ -901,6 +1006,10 @@ namespace esphome
                 ESP_LOGW(TAG, "Cannot move desk while reset is running");
                 return false;
             }
+            if (button_action_active)
+            {
+                this->finish_button_action_("button_cancelled");
+            }
             if (std::isnan(current_height))
             {
                 ESP_LOGW(TAG, "Cannot move desk: current height is unknown");
@@ -941,6 +1050,11 @@ namespace esphome
             if (this->is_reset_active_())
             {
                 this->finish_reset_("reset_cancelled");
+                return;
+            }
+            if (button_action_active)
+            {
+                this->finish_button_action_("button_stopped");
                 return;
             }
             this->finish_move_("stopped");
@@ -1089,6 +1203,22 @@ namespace esphome
                 return false;
             }
             return enqueue_command_(button_chars, repeat);
+        }
+
+        bool SmartDesk::press_button_command(std::string button_chars, int repeat)
+        {
+            if (this->is_reset_active_())
+            {
+                ESP_LOGW(TAG, "Ignoring button command '%s' while reset is running", button_chars.c_str());
+                return false;
+            }
+
+            const bool queued = enqueue_command_(button_chars, repeat);
+            if (queued && should_track_button_action_(button_chars))
+            {
+                start_button_action_(button_chars);
+            }
+            return queued;
         }
 
         bool SmartDesk::enqueue_command_(std::string button_chars, int repeat)

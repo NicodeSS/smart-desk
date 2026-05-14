@@ -19,11 +19,11 @@ namespace esphome
 
             if (repeat_ > 0)
             {
-                this->parent_->add_command(command_, repeat_);
+                this->parent_->press_button_command(command_, repeat_);
             }
             else
             {
-                this->parent_->add_command(command_);
+                this->parent_->press_button_command(command_);
             }
         }
     }

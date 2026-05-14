@@ -80,6 +80,11 @@ namespace esphome
             {
                 return add_command(button_chars, default_tx_command_repeat);
             }
+            bool press_button_command(std::string button_chars, int repeat);
+            bool press_button_command(std::string button_chars)
+            {
+                return press_button_command(button_chars, default_tx_command_repeat);
+            }
             bool get_handset_state()
             {
                 return is_handset_online;
@@ -297,6 +302,14 @@ namespace esphome
             uint32_t last_move_progress_ms = 0;
             float last_move_progress_height = NAN;
             std::string last_move_result = "idle";
+            bool button_action_active = false;
+            std::string button_action_command;
+            uint32_t button_action_started_ms = 0;
+            uint32_t button_action_last_progress_ms = 0;
+            float button_action_last_height = NAN;
+            int button_action_direction = 0;
+            uint32_t button_action_idle_timeout_ms = 1000;
+            uint32_t button_action_timeout_ms = 60000;
             reset_state_t reset_state = RESET_IDLE;
             uint32_t reset_started_ms = 0;
             uint32_t reset_phase_started_ms = 0;
@@ -401,6 +414,10 @@ namespace esphome
             const char *reset_state_to_string_(reset_state_t state) const;
             void process_reset_(bool force_command_refill = false);
             void finish_reset_(const std::string &result);
+            bool should_track_button_action_(const std::string &button_chars) const;
+            void start_button_action_(const std::string &button_chars);
+            void process_button_action_(uint32_t now);
+            void finish_button_action_(const std::string &result);
             bool enqueue_command_(std::string button_chars, int repeat);
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
             void observe_manual_handset_frame_(const uint8_t *buf, uint32_t now);
