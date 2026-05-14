@@ -164,6 +164,7 @@ namespace esphome
             }
             process_move_();
             maybe_finish_manual_move_(millis());
+            maybe_log_target_move_final_sample_(millis());
         }
 
         void SmartDesk::dump_config()
@@ -445,6 +446,9 @@ namespace esphome
             target_move_rx_interval_count = 0;
             target_move_start_height = current_height;
             target_move_end_height = current_height;
+            target_move_target_height = target_height;
+            target_move_instant_overshoot = NAN;
+            target_move_result = "";
             target_move_error_seen = false;
             target_move_last_display = rx_decoder != nullptr ? rx_decoder->get_desk_display() : "";
             target_move_last_state = rx_decoder != nullptr ? rx_decoder->get_desk_state() : "";
@@ -559,9 +563,20 @@ namespace esphome
             const float delta = (!std::isnan(target_move_start_height) && !std::isnan(target_move_end_height)) ?
                                     target_move_end_height - target_move_start_height :
                                     NAN;
+            const float requested = (!std::isnan(target_move_start_height) && !std::isnan(target_move_target_height)) ?
+                                        target_move_target_height - target_move_start_height :
+                                        NAN;
+            const float avg_speed = duration == 0 || std::isnan(delta) ? NAN :
+                                                                        std::fabs(delta) * 1000.0f / duration;
+            target_move_instant_overshoot = (!std::isnan(target_move_end_height) && !std::isnan(target_move_target_height)) ?
+                                                (target_move_end_height - target_move_target_height) :
+                                                NAN;
+            target_move_result = result;
 
             ESP_LOGW(TAG, "Target move ended: result=%s direction=%s duration=%" PRIu32 "ms target=%.1f",
-                     result.c_str(), manual_move_direction_to_string_(target_move_direction), duration, target_height);
+                     result.c_str(), manual_move_direction_to_string_(target_move_direction), duration, target_move_target_height);
+            ESP_LOGW(TAG, "  requested_delta=%.1f traveled_delta=%.1f avg_speed=%.2fcm/s instant_overshoot=%.1f",
+                     requested, delta, avg_speed, target_move_instant_overshoot);
             ESP_LOGW(TAG, "  tx_frames=%" PRIu32 " up=%" PRIu32 " down=%" PRIu32 " normal=%" PRIu32 " other=%" PRIu32,
                      target_move_sent_frames, target_move_up_frames, target_move_down_frames,
                      target_move_normal_frames, target_move_other_frames);
@@ -586,6 +601,39 @@ namespace esphome
             }
 
             target_move_debug_active = false;
+            target_move_final_sample_pending = true;
+            target_move_final_sample_due_ms = now + TARGET_MOVE_FINAL_SAMPLE_DELAY_MS;
+            target_move_final_sample_target_height = target_move_target_height;
+            target_move_final_sample_stop_height = target_move_end_height;
+            target_move_final_sample_direction = target_move_direction;
+            target_move_final_sample_result = result;
+        }
+
+        void SmartDesk::maybe_log_target_move_final_sample_(uint32_t now)
+        {
+            if (!manual_move_debug || !target_move_final_sample_pending)
+            {
+                return;
+            }
+            if (static_cast<int32_t>(now - target_move_final_sample_due_ms) < 0)
+            {
+                return;
+            }
+
+            target_move_final_sample_pending = false;
+            const float final_height = current_height;
+            const float final_overshoot = (!std::isnan(final_height) && !std::isnan(target_move_final_sample_target_height)) ?
+                                              final_height - target_move_final_sample_target_height :
+                                              NAN;
+            const float post_stop_drift = (!std::isnan(final_height) && !std::isnan(target_move_final_sample_stop_height)) ?
+                                              final_height - target_move_final_sample_stop_height :
+                                              NAN;
+            ESP_LOGW(TAG, "Target move final sample: result=%s direction=%s final_height=%.1f target=%.1f",
+                     target_move_final_sample_result.c_str(),
+                     manual_move_direction_to_string_(target_move_final_sample_direction),
+                     final_height, target_move_final_sample_target_height);
+            ESP_LOGW(TAG, "  final_overshoot=%.1f post_stop_drift=%.1f sample_delay=%" PRIu32 "ms",
+                     final_overshoot, post_stop_drift, TARGET_MOVE_FINAL_SAMPLE_DELAY_MS);
         }
 
         SmartDesk::manual_move_direction_t SmartDesk::get_handset_direction_(const uint8_t *buf) const

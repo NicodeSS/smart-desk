@@ -325,9 +325,18 @@ namespace esphome
             uint32_t target_move_rx_interval_count = 0;
             float target_move_start_height = NAN;
             float target_move_end_height = NAN;
+            float target_move_target_height = NAN;
+            float target_move_instant_overshoot = NAN;
+            std::string target_move_result;
             bool target_move_error_seen = false;
             std::string target_move_last_display;
             std::string target_move_last_state;
+            bool target_move_final_sample_pending = false;
+            uint32_t target_move_final_sample_due_ms = 0;
+            float target_move_final_sample_target_height = NAN;
+            float target_move_final_sample_stop_height = NAN;
+            manual_move_direction_t target_move_final_sample_direction = MANUAL_MOVE_NONE;
+            std::string target_move_final_sample_result;
             static constexpr size_t MANUAL_DEBUG_RECENT_FRAME_COUNT = 8;
             DebugFrame manual_move_recent_handset_frames[MANUAL_DEBUG_RECENT_FRAME_COUNT];
             DebugFrame manual_move_recent_rx_frames[MANUAL_DEBUG_RECENT_FRAME_COUNT];
@@ -345,6 +354,7 @@ namespace esphome
             static constexpr uint32_t MIN_LEARNED_IDLE_INTERVAL_MS = 5;
             static constexpr uint32_t MAX_LEARNED_IDLE_INTERVAL_MS = 100;
             static constexpr uint32_t MANUAL_MOVE_END_TIMEOUT_MS = 150;
+            static constexpr uint32_t TARGET_MOVE_FINAL_SAMPLE_DELAY_MS = 800;
 
             uint32_t get_offline_tx_interval_ms_() const;
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
@@ -357,6 +367,7 @@ namespace esphome
             void observe_target_tx_frame_(const uint8_t *buf, uint32_t now, bool injected);
             void observe_target_rx_update_(const uint8_t *buf, uint32_t now);
             void finish_target_move_debug_(uint32_t now, const std::string &result);
+            void maybe_log_target_move_final_sample_(uint32_t now);
             manual_move_direction_t get_handset_direction_(const uint8_t *buf) const;
             const char *manual_move_direction_to_string_(manual_move_direction_t direction) const;
             void store_debug_frame_(DebugFrame *frames, size_t &next, size_t &count, const uint8_t *buf, uint32_t now, uint32_t started_ms);
