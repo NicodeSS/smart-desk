@@ -24,6 +24,7 @@ namespace esphome
             {
                 rx_decoder = new RxDecoder();
             }
+            this->sync_decoder_height_range_();
             if (tx_verifier == nullptr)
             {
                 tx_verifier = new TxVerifier();
@@ -163,6 +164,7 @@ namespace esphome
             ESP_LOGCONFIG(TAG, "dump_config");
             ESP_LOGCONFIG(TAG, "Max handset timeout count: %d", max_handset_timeout_count);
             ESP_LOGCONFIG(TAG, "Default command repeat: %d", default_tx_command_repeat);
+            ESP_LOGCONFIG(TAG, "Height range: %.1f-%.1f cm", min_desk_height, max_desk_height);
             ESP_LOGCONFIG(TAG, "Offline TX interval: %" PRIu32 " ms", offline_tx_interval_ms);
             ESP_LOGCONFIG(TAG, "Learned handset idle interval: %" PRIu32 " ms", learned_handset_idle_interval_ms);
             ESP_LOGCONFIG(TAG, "Move tolerance: %.1f cm", move_tolerance);
@@ -356,6 +358,14 @@ namespace esphome
             if (text_sensor_last_move_result != nullptr)
             {
                 text_sensor_last_move_result->publish_state(last_move_result);
+            }
+        }
+
+        void SmartDesk::sync_decoder_height_range_()
+        {
+            if (rx_decoder != nullptr)
+            {
+                rx_decoder->set_height_range(min_desk_height, max_desk_height);
             }
         }
 

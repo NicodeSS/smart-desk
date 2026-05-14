@@ -41,9 +41,13 @@ namespace esphome
 {
     namespace nicode_smart_desk
     {
-        extern float max_desk_height;
-        extern float min_desk_height;
         extern const char segment_map[128];
+
+        void RxDecoder::set_height_range(float min_height, float max_height)
+        {
+            min_desk_height = min_height;
+            max_desk_height = max_height;
+        }
 
         bool RxDecoder::put(uint8_t b)
         {

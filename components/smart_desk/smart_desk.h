@@ -17,10 +17,6 @@ namespace esphome
 {
     namespace nicode_smart_desk
     {
-        extern float max_desk_height;
-        extern float min_desk_height;
-        extern int default_tx_command_repeat;
-
         typedef enum
         {
             DESK_MEMSET = 0x01,
@@ -169,11 +165,13 @@ namespace esphome
             void set_min_height(float v)
             {
                 min_desk_height = v;
+                this->sync_decoder_height_range_();
             }
 
             void set_max_height(float v)
             {
                 max_desk_height = v;
+                this->sync_decoder_height_range_();
             }
 
             void set_offline_tx_interval_ms(uint32_t v)
@@ -231,6 +229,9 @@ namespace esphome
 
             float current_height = NAN;
             float target_height = NAN;
+            float min_desk_height = 62.0f;
+            float max_desk_height = 127.0f;
+            int default_tx_command_repeat = 5;
             move_state_t move_state = MOVE_IDLE;
             float move_tolerance = 0.4f;
             int move_command_repeat = 4;
@@ -262,6 +263,7 @@ namespace esphome
             void process_move_();
             void finish_move_(const std::string &result);
             void publish_diagnostics_();
+            void sync_decoder_height_range_();
 
         };
 

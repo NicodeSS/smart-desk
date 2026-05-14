@@ -10,8 +10,6 @@ namespace esphome
 {
     namespace nicode_smart_desk
     {
-        extern float max_desk_height;
-        extern float min_desk_height;
         extern const char segment_map[128];
         class RxDecoder
         {
@@ -47,6 +45,8 @@ namespace esphome
             bool is_data_updated = false;
 
             float desk_height = NAN;
+            float min_desk_height = 62.0f;
+            float max_desk_height = 127.0f;
 
             std::string decode();
             bool is_numeric_display_() const;
@@ -57,6 +57,7 @@ namespace esphome
             ~RxDecoder() {}
 
             bool put(uint8_t b);
+            void set_height_range(float min_height, float max_height);
 
             void update_state();
             const uint8_t *get_buffer() const;

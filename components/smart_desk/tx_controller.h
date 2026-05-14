@@ -8,7 +8,6 @@ namespace esphome
 {
     namespace nicode_smart_desk
     {
-        extern int default_tx_command_repeat;
         constexpr size_t TX_COMMAND_QUEUE_SIZE = 16;
         struct TxCommand
         {
@@ -27,10 +26,6 @@ namespace esphome
             ~TxController() {};
 
             bool enqueue(const uint8_t *command, int repeat);
-            bool enqueue(const uint8_t *command)
-            {
-                return enqueue(command, default_tx_command_repeat);
-            }
             const TxCommand *pop();
             void clear();
 
