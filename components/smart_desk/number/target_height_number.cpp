@@ -20,11 +20,6 @@ namespace esphome
 
         void SmartDeskTargetHeightNumber::loop()
         {
-            if (this->parent_->is_moving())
-            {
-                return;
-            }
-
             const float height = this->parent_->get_current_height();
             if (!std::isnan(height) && (std::isnan(last_published_height) || std::fabs(height - last_published_height) >= 0.1f))
             {
