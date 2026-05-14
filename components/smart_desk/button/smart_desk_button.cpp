@@ -6,6 +6,12 @@ namespace esphome
     {
         void SmartDeskButton::press_action()
         {
+            if (reset_)
+            {
+                this->parent_->start_reset();
+                return;
+            }
+
             if (command_.empty())
             {
                 return;

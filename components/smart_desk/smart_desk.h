@@ -126,13 +126,16 @@ namespace esphome
             {
                 return start_move_to_height(position_to_height(position));
             }
+            bool start_reset();
             void stop_moving();
             bool is_moving() const
             {
-                return move_state != MOVE_IDLE;
+                return move_state != MOVE_IDLE || reset_state != RESET_IDLE;
             }
             int get_move_direction() const
             {
+                if (reset_state == RESET_MOVING_TO_MIN || reset_state == RESET_HOLDING_FOR_RESET)
+                    return -1;
                 if (move_state == MOVE_UP)
                     return 1;
                 if (move_state == MOVE_DOWN)
@@ -237,6 +240,13 @@ namespace esphome
             } move_state_t;
             typedef enum
             {
+                RESET_IDLE,
+                RESET_MOVING_TO_MIN,
+                RESET_RELEASE_BEFORE_HOLD,
+                RESET_HOLDING_FOR_RESET,
+            } reset_state_t;
+            typedef enum
+            {
                 MANUAL_MOVE_NONE,
                 MANUAL_MOVE_UP,
                 MANUAL_MOVE_DOWN,
@@ -287,6 +297,14 @@ namespace esphome
             uint32_t last_move_progress_ms = 0;
             float last_move_progress_height = NAN;
             std::string last_move_result = "idle";
+            reset_state_t reset_state = RESET_IDLE;
+            uint32_t reset_started_ms = 0;
+            uint32_t reset_phase_started_ms = 0;
+            uint32_t reset_last_command_ms = 0;
+            bool reset_seen_display = false;
+            float reset_completion_tolerance = 0.2f;
+            uint32_t reset_release_ms = 1000;
+            uint32_t reset_hold_timeout_ms = 30000;
 
             bool is_handset_online = false;
             bool is_initial_command_sent = false;
@@ -379,6 +397,11 @@ namespace esphome
             static constexpr uint32_t TARGET_MOVE_FINAL_SAMPLE_DELAY_MS = 800;
 
             uint32_t get_offline_tx_interval_ms_() const;
+            bool is_reset_active_() const;
+            const char *reset_state_to_string_(reset_state_t state) const;
+            void process_reset_(bool force_command_refill = false);
+            void finish_reset_(const std::string &result);
+            bool enqueue_command_(std::string button_chars, int repeat);
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
             void observe_manual_handset_frame_(const uint8_t *buf, uint32_t now);
             void observe_manual_rx_update_(const uint8_t *buf, uint32_t now);

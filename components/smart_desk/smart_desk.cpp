@@ -77,7 +77,11 @@ namespace esphome
                         const uint32_t now = millis();
                         observe_handset_frame_(tx_verifier->get_buffer(), now);
                         observe_manual_handset_frame_(tx_verifier->get_buffer(), now);
-                        process_move_(true);
+                        const bool reset_active = this->is_reset_active_();
+                        if (reset_active)
+                            process_reset_(true);
+                        else
+                            process_move_(true);
 
                         if (!tx_controller->is_empty())
                         {
@@ -88,8 +92,15 @@ namespace esphome
                         else
                         {
                             const uint8_t *buf = tx_verifier->get_buffer();
-                            // ESP_LOGD(TAG, "Handset --> ControlBox : %X %X %X %X %X", buf[0], buf[1], buf[2], buf[3], buf[4]);
-                            write_control_frame_(buf, now, false);
+                            if (reset_active)
+                            {
+                                write_control_frame_(command_handset_normal, now, true);
+                            }
+                            else
+                            {
+                                // ESP_LOGD(TAG, "Handset --> ControlBox : %X %X %X %X %X", buf[0], buf[1], buf[2], buf[3], buf[4]);
+                                write_control_frame_(buf, now, false);
+                            }
                         }
 
                         break;
@@ -102,7 +113,10 @@ namespace esphome
                 if (now - last_offline_tx_ms >= get_offline_tx_interval_ms_())
                 {
                     last_offline_tx_ms = now;
-                    process_move_(true);
+                    if (this->is_reset_active_())
+                        process_reset_(true);
+                    else
+                        process_move_(true);
 
                     if (!tx_controller->is_empty())
                     {
@@ -162,7 +176,10 @@ namespace esphome
                     break;
                 }
             }
-            process_move_();
+            if (this->is_reset_active_())
+                process_reset_();
+            else
+                process_move_();
             maybe_finish_manual_move_(millis());
             maybe_log_target_move_final_sample_(millis());
         }
@@ -188,6 +205,10 @@ namespace esphome
 
         std::string SmartDesk::get_movement_state() const
         {
+            if (reset_state != RESET_IDLE)
+            {
+                return reset_state_to_string_(reset_state);
+            }
             switch (move_state)
             {
             case MOVE_UP:
@@ -203,6 +224,163 @@ namespace esphome
         uint32_t SmartDesk::get_offline_tx_interval_ms_() const
         {
             return learned_handset_idle_interval_ms != 0 ? learned_handset_idle_interval_ms : offline_tx_interval_ms;
+        }
+
+        bool SmartDesk::is_reset_active_() const
+        {
+            return reset_state != RESET_IDLE;
+        }
+
+        const char *SmartDesk::reset_state_to_string_(reset_state_t state) const
+        {
+            switch (state)
+            {
+            case RESET_MOVING_TO_MIN:
+                return "reset_down_to_min";
+            case RESET_RELEASE_BEFORE_HOLD:
+                return "reset_release";
+            case RESET_HOLDING_FOR_RESET:
+                return "reset_holding";
+            case RESET_IDLE:
+            default:
+                return "idle";
+            }
+        }
+
+        bool SmartDesk::start_reset()
+        {
+            if (this->is_reset_active_())
+            {
+                ESP_LOGW(TAG, "Reset is already running");
+                return false;
+            }
+
+            this->clear_commands();
+            if (move_state != MOVE_IDLE)
+            {
+                finish_target_move_debug_(millis(), "reset_started");
+            }
+            move_state = MOVE_IDLE;
+            target_height = NAN;
+            move_started_ms = 0;
+            move_start_height = NAN;
+            last_move_stop_margin = NAN;
+            last_move_command_ms = 0;
+            last_move_progress_ms = 0;
+            last_move_progress_height = NAN;
+
+            const uint32_t now = millis();
+            reset_state = RESET_MOVING_TO_MIN;
+            reset_started_ms = now;
+            reset_phase_started_ms = now;
+            reset_last_command_ms = 0;
+            reset_seen_display = false;
+            last_move_result = "resetting";
+            publish_diagnostics_();
+
+            ESP_LOGW(TAG, "Starting desk reset: drive down to %.1f cm, release for %" PRIu32 "ms, then hold down until reset completes",
+                     min_desk_height, reset_release_ms);
+            return true;
+        }
+
+        void SmartDesk::finish_reset_(const std::string &result)
+        {
+            if (!this->is_reset_active_())
+            {
+                return;
+            }
+
+            ESP_LOGW(TAG, "Desk reset finished: result=%s state=%s height=%.1f seen_rst=%s",
+                     result.c_str(), reset_state_to_string_(reset_state), current_height,
+                     reset_seen_display ? "true" : "false");
+            reset_state = RESET_IDLE;
+            reset_started_ms = 0;
+            reset_phase_started_ms = 0;
+            reset_last_command_ms = 0;
+            reset_seen_display = false;
+            last_move_result = result;
+            this->clear_commands();
+            publish_diagnostics_();
+        }
+
+        void SmartDesk::process_reset_(bool force_command_refill)
+        {
+            if (!this->is_reset_active_())
+            {
+                return;
+            }
+
+            const uint32_t now = millis();
+            const std::string desk_state = rx_decoder != nullptr ? rx_decoder->get_desk_state() : "";
+            const bool height_is_min = !std::isnan(current_height) &&
+                                       current_height <= min_desk_height + reset_completion_tolerance;
+
+            if (reset_state == RESET_MOVING_TO_MIN)
+            {
+                if (now - reset_phase_started_ms > move_timeout_ms)
+                {
+                    ESP_LOGW(TAG, "Desk reset did not reach minimum height within %" PRIu32 "ms", move_timeout_ms);
+                    this->finish_reset_("reset_descent_timeout");
+                    return;
+                }
+
+                if (height_is_min)
+                {
+                    reset_state = RESET_RELEASE_BEFORE_HOLD;
+                    reset_phase_started_ms = now;
+                    reset_last_command_ms = 0;
+                    last_move_result = "reset_release";
+                    this->clear_commands();
+                    publish_diagnostics_();
+                    ESP_LOGW(TAG, "Desk reset reached minimum height %.1f cm; releasing down button for %" PRIu32 "ms",
+                             current_height, reset_release_ms);
+                    return;
+                }
+            }
+            else if (reset_state == RESET_RELEASE_BEFORE_HOLD)
+            {
+                this->clear_commands();
+                if (now - reset_phase_started_ms >= reset_release_ms)
+                {
+                    reset_state = RESET_HOLDING_FOR_RESET;
+                    reset_phase_started_ms = now;
+                    reset_last_command_ms = 0;
+                    last_move_result = "reset_holding";
+                    publish_diagnostics_();
+                    ESP_LOGW(TAG, "Desk reset release window complete; holding down until RST completes");
+                }
+                return;
+            }
+            else if (reset_state == RESET_HOLDING_FOR_RESET)
+            {
+                if (now - reset_phase_started_ms > reset_hold_timeout_ms)
+                {
+                    ESP_LOGW(TAG, "Desk reset did not complete within %" PRIu32 "ms after hold started", reset_hold_timeout_ms);
+                    this->finish_reset_("reset_timeout");
+                    return;
+                }
+
+                if (desk_state == "复位中")
+                {
+                    reset_seen_display = true;
+                }
+                if (reset_seen_display && desk_state == "正常" && height_is_min)
+                {
+                    this->finish_reset_("reset_done");
+                    return;
+                }
+            }
+
+            if (!tx_controller->is_empty() ||
+                (!force_command_refill && reset_last_command_ms != 0 && now - reset_last_command_ms < move_command_interval_ms))
+            {
+                return;
+            }
+
+            if (enqueue_command_("D", move_command_repeat))
+            {
+                reset_last_command_ms = now;
+            }
         }
 
         void SmartDesk::observe_handset_frame_(const uint8_t *buf, uint32_t now)
@@ -718,6 +896,11 @@ namespace esphome
 
         bool SmartDesk::start_move_to_height(float target_height)
         {
+            if (this->is_reset_active_())
+            {
+                ESP_LOGW(TAG, "Cannot move desk while reset is running");
+                return false;
+            }
             if (std::isnan(current_height))
             {
                 ESP_LOGW(TAG, "Cannot move desk: current height is unknown");
@@ -755,6 +938,11 @@ namespace esphome
 
         void SmartDesk::stop_moving()
         {
+            if (this->is_reset_active_())
+            {
+                this->finish_reset_("reset_cancelled");
+                return;
+            }
             this->finish_move_("stopped");
         }
 
@@ -894,6 +1082,16 @@ namespace esphome
         }
 
         bool SmartDesk::add_command(std::string button_chars, int repeat)
+        {
+            if (this->is_reset_active_())
+            {
+                ESP_LOGW(TAG, "Ignoring command '%s' while reset is running", button_chars.c_str());
+                return false;
+            }
+            return enqueue_command_(button_chars, repeat);
+        }
+
+        bool SmartDesk::enqueue_command_(std::string button_chars, int repeat)
         {
             if (tx_controller == nullptr || repeat <= 0 || tx_controller->is_full())
             {
