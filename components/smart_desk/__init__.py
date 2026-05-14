@@ -23,6 +23,8 @@ CONF_MOVE_COMMAND_INTERVAL = 'move_command_interval'
 CONF_MOVE_TIMEOUT = 'move_timeout'
 CONF_MOVE_STALL_TIMEOUT = 'move_stall_timeout'
 CONF_MOVE_STALL_TOLERANCE = 'move_stall_tolerance'
+CONF_MANUAL_MOVE_DEBUG = 'manual_move_debug'
+CONF_MANUAL_MOVE_DEBUG_DUMP_FRAMES = 'manual_move_debug_dump_frames'
 
 def validate_config(config):
     if config[CONF_MIN_HEIGHT] >= config[CONF_MAX_HEIGHT]:
@@ -46,6 +48,8 @@ CONFIG_SCHEMA = cv.All(
         cv.Optional(CONF_MOVE_TIMEOUT, default="30s"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_MOVE_STALL_TIMEOUT, default="3s"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_MOVE_STALL_TOLERANCE, default=0.2): cv.float_range(min=0.1, max=2.0),
+        cv.Optional(CONF_MANUAL_MOVE_DEBUG, default=False): cv.boolean,
+        cv.Optional(CONF_MANUAL_MOVE_DEBUG_DUMP_FRAMES, default=True): cv.boolean,
     }),
     validate_config,
 )
@@ -71,3 +75,5 @@ async def to_code(config):
     cg.add(var.set_move_timeout_ms(config[CONF_MOVE_TIMEOUT].total_milliseconds))
     cg.add(var.set_move_stall_timeout_ms(config[CONF_MOVE_STALL_TIMEOUT].total_milliseconds))
     cg.add(var.set_move_stall_tolerance(config[CONF_MOVE_STALL_TOLERANCE]))
+    cg.add(var.set_manual_move_debug(config[CONF_MANUAL_MOVE_DEBUG]))
+    cg.add(var.set_manual_move_debug_dump_frames(config[CONF_MANUAL_MOVE_DEBUG_DUMP_FRAMES]))

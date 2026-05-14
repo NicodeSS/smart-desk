@@ -6,6 +6,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include <cmath>
+#include <stddef.h>
 #include <stdint.h>
 #include <string>
 
@@ -202,6 +203,14 @@ namespace esphome
             {
                 move_stall_tolerance = v;
             }
+            void set_manual_move_debug(bool v)
+            {
+                manual_move_debug = v;
+            }
+            void set_manual_move_debug_dump_frames(bool v)
+            {
+                manual_move_debug_dump_frames = v;
+            }
 
         protected:
             typedef enum
@@ -210,6 +219,18 @@ namespace esphome
                 MOVE_UP,
                 MOVE_DOWN,
             } move_state_t;
+            typedef enum
+            {
+                MANUAL_MOVE_NONE,
+                MANUAL_MOVE_UP,
+                MANUAL_MOVE_DOWN,
+                MANUAL_MOVE_MIXED,
+            } manual_move_direction_t;
+            struct DebugFrame
+            {
+                uint32_t offset_ms;
+                uint8_t bytes[5];
+            };
 
             sensor::Sensor *sensor_height{nullptr};
             sensor::Sensor *sensor_target_height{nullptr};
@@ -254,12 +275,56 @@ namespace esphome
             uint32_t last_handset_idle_frame_ms = 0;
             uint32_t learned_handset_idle_interval_ms = 0;
             bool has_logged_learned_interval = false;
+            bool manual_move_debug = false;
+            bool manual_move_debug_dump_frames = true;
+            bool manual_move_active = false;
+            manual_move_direction_t manual_move_direction = MANUAL_MOVE_NONE;
+            uint32_t manual_move_started_ms = 0;
+            uint32_t manual_move_last_direction_ms = 0;
+            uint32_t manual_move_last_handset_frame_ms = 0;
+            uint32_t manual_move_handset_frames = 0;
+            uint32_t manual_move_up_frames = 0;
+            uint32_t manual_move_down_frames = 0;
+            uint32_t manual_move_normal_frames = 0;
+            uint32_t manual_move_other_frames = 0;
+            uint32_t manual_move_handset_interval_min_ms = UINT32_MAX;
+            uint32_t manual_move_handset_interval_max_ms = 0;
+            uint32_t manual_move_handset_interval_sum_ms = 0;
+            uint32_t manual_move_handset_interval_count = 0;
+            uint32_t manual_move_last_rx_update_ms = 0;
+            uint32_t manual_move_rx_updates = 0;
+            uint32_t manual_move_rx_interval_min_ms = UINT32_MAX;
+            uint32_t manual_move_rx_interval_max_ms = 0;
+            uint32_t manual_move_rx_interval_sum_ms = 0;
+            uint32_t manual_move_rx_interval_count = 0;
+            float manual_move_start_height = NAN;
+            float manual_move_end_height = NAN;
+            bool manual_move_error_seen = false;
+            std::string manual_move_last_display;
+            std::string manual_move_last_state;
+            static constexpr size_t MANUAL_DEBUG_RECENT_FRAME_COUNT = 8;
+            DebugFrame manual_move_recent_handset_frames[MANUAL_DEBUG_RECENT_FRAME_COUNT];
+            DebugFrame manual_move_recent_rx_frames[MANUAL_DEBUG_RECENT_FRAME_COUNT];
+            size_t manual_move_recent_handset_next = 0;
+            size_t manual_move_recent_handset_count = 0;
+            size_t manual_move_recent_rx_next = 0;
+            size_t manual_move_recent_rx_count = 0;
             static constexpr uint32_t MIN_OFFLINE_TX_INTERVAL_MS = 5;
             static constexpr uint32_t MIN_LEARNED_IDLE_INTERVAL_MS = 5;
             static constexpr uint32_t MAX_LEARNED_IDLE_INTERVAL_MS = 100;
+            static constexpr uint32_t MANUAL_MOVE_END_TIMEOUT_MS = 150;
 
             uint32_t get_offline_tx_interval_ms_() const;
             void observe_handset_frame_(const uint8_t *buf, uint32_t now);
+            void observe_manual_handset_frame_(const uint8_t *buf, uint32_t now);
+            void observe_manual_rx_update_(const uint8_t *buf, uint32_t now);
+            void maybe_finish_manual_move_(uint32_t now);
+            void finish_manual_move_(uint32_t now, const char *reason);
+            void reset_manual_move_(uint32_t now, manual_move_direction_t direction);
+            manual_move_direction_t get_handset_direction_(const uint8_t *buf) const;
+            const char *manual_move_direction_to_string_(manual_move_direction_t direction) const;
+            void store_debug_frame_(DebugFrame *frames, size_t &next, size_t &count, const uint8_t *buf, uint32_t now);
+            void log_recent_debug_frames_(const char *label, const DebugFrame *frames, size_t next, size_t count) const;
             void process_move_(bool force_command_refill = false);
             void finish_move_(const std::string &result);
             void publish_diagnostics_();

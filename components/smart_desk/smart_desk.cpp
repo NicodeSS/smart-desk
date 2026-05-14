@@ -76,6 +76,7 @@ namespace esphome
                     {
                         const uint32_t now = millis();
                         observe_handset_frame_(tx_verifier->get_buffer(), now);
+                        observe_manual_handset_frame_(tx_verifier->get_buffer(), now);
                         process_move_(true);
 
                         if (!tx_controller->is_empty())
@@ -154,11 +155,13 @@ namespace esphome
                             text_sensor_display->publish_state(rx_decoder->get_desk_display());
                         rx_decoder->set_updated();
                         publish_diagnostics_();
+                        observe_manual_rx_update_(buf, millis());
                     }
                     break;
                 }
             }
             process_move_();
+            maybe_finish_manual_move_(millis());
         }
 
         void SmartDesk::dump_config()
@@ -225,6 +228,255 @@ namespace esphome
                 }
             }
             last_handset_idle_frame_ms = now;
+        }
+
+        void SmartDesk::observe_manual_handset_frame_(const uint8_t *buf, uint32_t now)
+        {
+            if (!manual_move_debug || buf == nullptr)
+            {
+                return;
+            }
+
+            const manual_move_direction_t direction = get_handset_direction_(buf);
+            if (!manual_move_active)
+            {
+                if (direction != MANUAL_MOVE_UP && direction != MANUAL_MOVE_DOWN && direction != MANUAL_MOVE_MIXED)
+                {
+                    return;
+                }
+                reset_manual_move_(now, direction);
+            }
+
+            store_debug_frame_(manual_move_recent_handset_frames, manual_move_recent_handset_next,
+                               manual_move_recent_handset_count, buf, now);
+
+            if (manual_move_last_handset_frame_ms != 0)
+            {
+                const uint32_t interval = now - manual_move_last_handset_frame_ms;
+                if (interval < manual_move_handset_interval_min_ms)
+                    manual_move_handset_interval_min_ms = interval;
+                if (interval > manual_move_handset_interval_max_ms)
+                    manual_move_handset_interval_max_ms = interval;
+                manual_move_handset_interval_sum_ms += interval;
+                manual_move_handset_interval_count++;
+            }
+            manual_move_last_handset_frame_ms = now;
+            manual_move_handset_frames++;
+
+            const uint8_t pressed = buf[2];
+            if (direction == MANUAL_MOVE_UP)
+            {
+                manual_move_up_frames++;
+                manual_move_last_direction_ms = now;
+                if (manual_move_direction == MANUAL_MOVE_DOWN)
+                    manual_move_direction = MANUAL_MOVE_MIXED;
+            }
+            else if (direction == MANUAL_MOVE_DOWN)
+            {
+                manual_move_down_frames++;
+                manual_move_last_direction_ms = now;
+                if (manual_move_direction == MANUAL_MOVE_UP)
+                    manual_move_direction = MANUAL_MOVE_MIXED;
+            }
+            else if (direction == MANUAL_MOVE_MIXED)
+            {
+                manual_move_other_frames++;
+                manual_move_last_direction_ms = now;
+                manual_move_direction = MANUAL_MOVE_MIXED;
+            }
+            else if (pressed == 0x00)
+            {
+                manual_move_normal_frames++;
+            }
+            else
+            {
+                manual_move_other_frames++;
+            }
+        }
+
+        void SmartDesk::observe_manual_rx_update_(const uint8_t *buf, uint32_t now)
+        {
+            if (!manual_move_debug || !manual_move_active || rx_decoder == nullptr || buf == nullptr)
+            {
+                return;
+            }
+
+            store_debug_frame_(manual_move_recent_rx_frames, manual_move_recent_rx_next,
+                               manual_move_recent_rx_count, buf, now);
+
+            if (manual_move_last_rx_update_ms != 0)
+            {
+                const uint32_t interval = now - manual_move_last_rx_update_ms;
+                if (interval < manual_move_rx_interval_min_ms)
+                    manual_move_rx_interval_min_ms = interval;
+                if (interval > manual_move_rx_interval_max_ms)
+                    manual_move_rx_interval_max_ms = interval;
+                manual_move_rx_interval_sum_ms += interval;
+                manual_move_rx_interval_count++;
+            }
+            manual_move_last_rx_update_ms = now;
+            manual_move_rx_updates++;
+
+            manual_move_end_height = current_height;
+            manual_move_last_display = rx_decoder->get_desk_display();
+            manual_move_last_state = rx_decoder->get_desk_state();
+            if (manual_move_last_state == "报错" ||
+                (!manual_move_last_display.empty() && manual_move_last_display[0] == 'E') ||
+                manual_move_last_display == "H0t")
+            {
+                manual_move_error_seen = true;
+            }
+        }
+
+        void SmartDesk::maybe_finish_manual_move_(uint32_t now)
+        {
+            if (!manual_move_debug || !manual_move_active || manual_move_last_direction_ms == 0)
+            {
+                return;
+            }
+            if (now - manual_move_last_direction_ms >= MANUAL_MOVE_END_TIMEOUT_MS)
+            {
+                finish_manual_move_(now, "release_timeout");
+            }
+        }
+
+        void SmartDesk::finish_manual_move_(uint32_t now, const char *reason)
+        {
+            const uint32_t duration = now - manual_move_started_ms;
+            const uint32_t handset_avg = manual_move_handset_interval_count == 0 ? 0 :
+                                                                                   manual_move_handset_interval_sum_ms / manual_move_handset_interval_count;
+            const uint32_t rx_avg = manual_move_rx_interval_count == 0 ? 0 :
+                                                                         manual_move_rx_interval_sum_ms / manual_move_rx_interval_count;
+            const uint32_t handset_min = manual_move_handset_interval_count == 0 ? 0 : manual_move_handset_interval_min_ms;
+            const uint32_t rx_min = manual_move_rx_interval_count == 0 ? 0 : manual_move_rx_interval_min_ms;
+            const float delta = (!std::isnan(manual_move_start_height) && !std::isnan(manual_move_end_height)) ?
+                                    manual_move_end_height - manual_move_start_height :
+                                    NAN;
+
+            ESP_LOGW(TAG, "Manual move ended: reason=%s direction=%s duration=%" PRIu32 "ms",
+                     reason, manual_move_direction_to_string_(manual_move_direction), duration);
+            ESP_LOGW(TAG, "  handset_frames=%" PRIu32 " up=%" PRIu32 " down=%" PRIu32 " normal=%" PRIu32 " other=%" PRIu32,
+                     manual_move_handset_frames, manual_move_up_frames, manual_move_down_frames,
+                     manual_move_normal_frames, manual_move_other_frames);
+            ESP_LOGW(TAG, "  handset_interval_ms min=%" PRIu32 " avg=%" PRIu32 " max=%" PRIu32,
+                     handset_min, handset_avg, manual_move_handset_interval_max_ms);
+            ESP_LOGW(TAG, "  height_start=%.1f height_end=%.1f delta=%.1f",
+                     manual_move_start_height, manual_move_end_height, delta);
+            ESP_LOGW(TAG, "  rx_updates=%" PRIu32 " rx_interval_ms min=%" PRIu32 " avg=%" PRIu32 " max=%" PRIu32,
+                     manual_move_rx_updates, rx_min, rx_avg, manual_move_rx_interval_max_ms);
+            ESP_LOGW(TAG, "  display_last=%s state=%s error_seen=%s",
+                     manual_move_last_display.c_str(), manual_move_last_state.c_str(),
+                     manual_move_error_seen ? "true" : "false");
+
+            if (manual_move_debug_dump_frames)
+            {
+                log_recent_debug_frames_("recent handset frames", manual_move_recent_handset_frames,
+                                         manual_move_recent_handset_next, manual_move_recent_handset_count);
+                log_recent_debug_frames_("recent controlbox frames", manual_move_recent_rx_frames,
+                                         manual_move_recent_rx_next, manual_move_recent_rx_count);
+            }
+
+            manual_move_active = false;
+        }
+
+        void SmartDesk::reset_manual_move_(uint32_t now, manual_move_direction_t direction)
+        {
+            manual_move_active = true;
+            manual_move_direction = direction;
+            manual_move_started_ms = now;
+            manual_move_last_direction_ms = now;
+            manual_move_last_handset_frame_ms = 0;
+            manual_move_handset_frames = 0;
+            manual_move_up_frames = 0;
+            manual_move_down_frames = 0;
+            manual_move_normal_frames = 0;
+            manual_move_other_frames = 0;
+            manual_move_handset_interval_min_ms = UINT32_MAX;
+            manual_move_handset_interval_max_ms = 0;
+            manual_move_handset_interval_sum_ms = 0;
+            manual_move_handset_interval_count = 0;
+            manual_move_last_rx_update_ms = 0;
+            manual_move_rx_updates = 0;
+            manual_move_rx_interval_min_ms = UINT32_MAX;
+            manual_move_rx_interval_max_ms = 0;
+            manual_move_rx_interval_sum_ms = 0;
+            manual_move_rx_interval_count = 0;
+            manual_move_start_height = current_height;
+            manual_move_end_height = current_height;
+            manual_move_error_seen = false;
+            manual_move_last_display = rx_decoder != nullptr ? rx_decoder->get_desk_display() : "";
+            manual_move_last_state = rx_decoder != nullptr ? rx_decoder->get_desk_state() : "";
+            manual_move_recent_handset_next = 0;
+            manual_move_recent_handset_count = 0;
+            manual_move_recent_rx_next = 0;
+            manual_move_recent_rx_count = 0;
+        }
+
+        SmartDesk::manual_move_direction_t SmartDesk::get_handset_direction_(const uint8_t *buf) const
+        {
+            if (buf == nullptr)
+            {
+                return MANUAL_MOVE_NONE;
+            }
+            const uint8_t pressed = buf[2];
+            const bool up = (pressed & DESK_UP) != 0;
+            const bool down = (pressed & DESK_DOWN) != 0;
+            if (up && down)
+                return MANUAL_MOVE_MIXED;
+            if (up)
+                return MANUAL_MOVE_UP;
+            if (down)
+                return MANUAL_MOVE_DOWN;
+            return MANUAL_MOVE_NONE;
+        }
+
+        const char *SmartDesk::manual_move_direction_to_string_(manual_move_direction_t direction) const
+        {
+            switch (direction)
+            {
+            case MANUAL_MOVE_UP:
+                return "up";
+            case MANUAL_MOVE_DOWN:
+                return "down";
+            case MANUAL_MOVE_MIXED:
+                return "mixed";
+            case MANUAL_MOVE_NONE:
+            default:
+                return "none";
+            }
+        }
+
+        void SmartDesk::store_debug_frame_(DebugFrame *frames, size_t &next, size_t &count, const uint8_t *buf, uint32_t now)
+        {
+            if (frames == nullptr || buf == nullptr)
+            {
+                return;
+            }
+            DebugFrame &frame = frames[next];
+            frame.offset_ms = now - manual_move_started_ms;
+            memcpy(frame.bytes, buf, sizeof(frame.bytes));
+            next = (next + 1) % MANUAL_DEBUG_RECENT_FRAME_COUNT;
+            if (count < MANUAL_DEBUG_RECENT_FRAME_COUNT)
+            {
+                count++;
+            }
+        }
+
+        void SmartDesk::log_recent_debug_frames_(const char *label, const DebugFrame *frames, size_t next, size_t count) const
+        {
+            if (frames == nullptr || count == 0)
+            {
+                return;
+            }
+            ESP_LOGW(TAG, "  %s:", label);
+            const size_t start = count == MANUAL_DEBUG_RECENT_FRAME_COUNT ? next : 0;
+            for (size_t i = 0; i < count; i++)
+            {
+                const DebugFrame &frame = frames[(start + i) % MANUAL_DEBUG_RECENT_FRAME_COUNT];
+                ESP_LOGW(TAG, "    +%" PRIu32 "ms %02X %02X %02X %02X %02X",
+                         frame.offset_ms, frame.bytes[0], frame.bytes[1], frame.bytes[2],
+                         frame.bytes[3], frame.bytes[4]);
+            }
         }
 
         bool SmartDesk::start_move_to_height(float target_height)

@@ -80,6 +80,8 @@ smart_desk:
   move_timeout: 30s
   move_stall_timeout: 3s
   move_stall_tolerance: 0.2
+  manual_move_debug: true
+  manual_move_debug_dump_frames: true
 
 sensor:
   - platform: smart_desk
