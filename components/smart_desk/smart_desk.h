@@ -101,36 +101,12 @@ namespace esphome
             {
                 return max_desk_height;
             }
-            float height_to_position(float height) const
-            {
-                const float range = max_desk_height - min_desk_height;
-                if (std::isnan(height) || range <= 0.0f)
-                    return NAN;
-                float position = (height - min_desk_height) / range;
-                if (position < 0.0f)
-                    return 0.0f;
-                if (position > 1.0f)
-                    return 1.0f;
-                return position;
-            }
-            float position_to_height(float position) const
-            {
-                if (position < 0.0f)
-                    position = 0.0f;
-                if (position > 1.0f)
-                    position = 1.0f;
-                return min_desk_height + position * (max_desk_height - min_desk_height);
-            }
             void clear_commands()
             {
                 if (tx_controller != nullptr)
                     tx_controller->clear();
             }
             bool start_move_to_height(float target_height);
-            bool start_move_to_position(float position)
-            {
-                return start_move_to_height(position_to_height(position));
-            }
             bool start_reset();
             void stop_moving();
             bool is_moving() const

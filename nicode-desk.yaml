@@ -125,12 +125,6 @@ number:
     max_height: 127.0
     step: 0.5
 
-cover:
-  - platform: smart_desk
-    smart_desk_id: smart_desk_ins
-    id: desk_position
-    name: "Desk Position"
-
 # output:
 #   - platform: gpio
 #     pin: GPIO4
